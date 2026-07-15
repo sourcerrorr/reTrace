@@ -1,0 +1,134 @@
+Role
+You are a senior product designer and front-end engineer. Build a desktop web application called reTrace — a calm, accessible, at-home rehabilitation tool for stroke survivors doing upper-limb therapy. Output responsive HTML/CSS/JS (Tailwind or vanilla, no framework required). The webcam and hand tracking are already handled — you are designing and building the UI shell and all overlays around them.
+
+Product in one paragraph
+The user sits in front of their laptop. The webcam feed fills the main area, mirrored horizontally, with a drawing canvas overlaid on top. The user moves their hand in the air; their index fingertip acts as a pen. They perform therapy exercises by tracing shapes or reaching for on-screen targets. reTrace is free, browser-only, requires no account, and never uploads video. Everything happens locally. This privacy promise must be visible in the UI.
+
+Audience & tone
+Primary user: stroke survivor, 55–80 years old, doing self-directed upper-limb therapy at home, possibly with a caregiver nearby.
+Tone: calm, warm, encouraging. Never clinical, never childishly gamified, never punitive. Praise before correction. Language at ~6th-grade reading level. Own the machine's failures ("I can't see your hand" — never "you are out of frame").
+Accessibility floor (non-negotiable)
+Body text ≥ 18 px, headlines ≥ 32 px, in-session cues ≥ 28 px.
+Touch/click targets ≥ 56 px; primary session buttons 64–72 px.
+Contrast ≥ 4.5:1 body, ≥ 7:1 during exercises. Color always paired with icon and text.
+Full keyboard operability. Focus rings 3 px, 2 px offset. Space = pause, Esc = exit, Enter = confirm.
+Respect prefers-reduced-motion. No autoplay animations. No time pressure.
+No dropdowns anywhere — every choice is a big tappable card.
+Visual language
+Palette (warm, natural, medical-adjacent — not sterile white/blue):
+Background — Bone #F6F4EF
+Surfaces — Paper #FFFDF8
+Borders — Line #E4DFD3
+Text — Ink #1A1A1A / Ink-2 #4A4A45 / Ink-3 #8A8880
+Primary / action / success — Sage oklch(0.48 0.06 150), with tints Sage-50 #EEF3EC, Sage-300 #A8C4A0
+Secondary / warmth — Clay oklch(0.68 0.07 55)
+Feedback — OK sage, Adjust amber oklch(0.78 0.11 85), Stop terracotta oklch(0.60 0.14 30), Info slate blue oklch(0.62 0.07 220)
+Type: Fraunces serif 600 for headlines and big numbers · Inter sans 400/500/600 for UI · JetBrains Mono 500 for labels and metrics.
+Spacing scale: 4 / 8 / 12 / 16 / 24 / 40 / 64 px. Card padding 24. Section gap 40. Page gutter 64.
+Radius: 8 chips · 12 buttons · 16 cards · 20 panels · full-round pills and camera controls.
+Elevation: flat surfaces with 1 px lines, one shadow only (0 12px 32px rgba(26,26,26,.06)) on hover.
+Style rules: no gradients on UI. No emoji. No red for negative feedback (use terracotta). No stock icons in blue circles. Serif for numbers, sans for labels.
+
+Global layout
+Desktop-only, min 1280×800. Left navigation rail 240 px wide, persistent except during active exercises. Rail contains: reTrace wordmark, and destinations — Home, Exercises, Progress, Settings. Main content area on paper background with 40 px padding, max content width 1120 px. A permanent bottom-left privacy chip reads: "Recording locally · nothing uploaded".
+
+Screens overview (5 total)
+1. Setup — first-run + settings entry
+2. Exercise select — pick Tracing or Reach-to-target
+3. Active exercise — full-screen camera + canvas, two sub-modes
+4. Results — post-exercise scores
+5. Progress history — trends and past sessions
+
+Screen 1 — Setup
+Layout: centered, single column, max-width 640 px. Two questions, stacked, each on its own card.
+Question 1 — "Which hand are you working on?" Two big buttons side by side, 200×160 px each, showing a simple hand silhouette. Labels "Left hand" and "Right hand" in 24 px Inter 600. Selected state: sage background, sage-700 border 3 px, checkmark top-right.
+Question 2 — "How challenging today?" Three cards in a row, each 200×180 px. Titles "Easy" / "Medium" / "Hard" in Fraunces 28. Under each, one plain sentence: "Larger targets, more time.", "Balanced practice.", "Smaller targets, faster pace." Selected state matches Q1.
+Bottom: single sage primary button "Continue →", 64 px tall, full-width of the 640 px column, disabled until both questions answered. Above it, a soft reminder: "You can change this anytime."
+No dropdowns. No sliders. No text inputs.
+Screen 2 — Exercise select
+Layout: two large cards side by side, each roughly 500×420 px, on the paper canvas.
+Card A — Tracing: illustrative preview showing a faint circle target with a sage trail following part of it. Title Fraunces 32 "Tracing". Body 18 px "Follow shapes in the air. Good for smooth, controlled movement." Button "Start tracing" 64 px, sage primary, full card width.
+Card B — Reach to target: preview showing a single circular target with a fingertip approaching. Title "Reach to target". Body "Touch circles as they appear. Good for range and speed." Button "Start reaching" 64 px.
+Above cards: small heading "Choose today's exercise". Below cards: a subtle link "Recommended: Tracing on Mondays and Thursdays."
+
+Screen 3 — Active exercise (shell)
+This is the app's centerpiece. Full-viewport. Left rail hidden. Only these elements exist on top of the camera feed:
+Mirrored webcam feed, fills the entire viewport, slightly desaturated (filter: saturate(0.85) brightness(0.95)) so overlays pop.
+Drawing canvas layered above the feed, transparent.
+Top-left — Mode indicator: pill 56 px tall, dark ink 70 % with backdrop-blur. Three states with a colored dot + label in Inter 20 600: sage "Drawing", amber "Hovering", ink-3 "Paused". No other UI competes with this.
+Top-right — Exit: 64 px circular button, paper fill, ink border, "×" glyph. On click: confirmation dialog "End this exercise? Your progress is saved." with two buttons "Keep going" (sage, default) and "End now" (ghost).
+Bottom-center — Progress or hint depending on exercise (defined below).
+Bottom-left — Privacy chip, always visible.
+Nothing else. No timer visible during the exercise itself. No score, no rep count clutter unless the exercise demands it. Calm.
+
+Screen 3a — Tracing sub-mode
+Shape picker, shown before tracing begins as a semi-modal on top of the camera: four large icon-only tiles (140×140 px), no text — a straight line, a circle, a spiral, and a wave. Selected tile: sage background, 3 px border. A single "Start" button below (72 px, sage, "Start tracing").
+During tracing:
+Target shape drawn on the canvas in faint sage (sage-300 at 40 % opacity), stroke 6 px, positioned centrally, roughly 60 % of canvas width.
+User's fingertip trail drawn on top in strong terracotta (Clay 500, full opacity), stroke 10 px, rounded cap. Trail persists during the attempt.
+A small sage dot marks the intended start point of the shape. As the user's fingertip nears it, the dot pulses. Once tracing begins, the dot disappears.
+States:
+Idle: target shown, faint, no trail. Cue pill top-center reads "Move your hand to the green dot to begin." A subtle sage fingertip cursor follows the user's hand.
+Tracing: trail building. Cue pill fades. Mode indicator shows "Drawing".
+Complete: when endpoint reached (or shape closed for circle), trail flashes sage briefly, target and trail freeze, and the camera dims 30 %. A pill appears center: "Done — let's see how you did" with a single "See results" button.
+Screen 3b — Reach-to-target sub-mode
+Sequence of exactly 10 targets, positions randomized within a safe zone (avoiding edges).
+Target: circle 120 px diameter (medium difficulty), sage-300 fill, sage-700 ring 4 px.
+Progress shown bottom-center as a segmented bar: 10 segments, each 40 px wide × 8 px tall, filled sage as each target is hit. Above it, small mono label "3 / 10".
+Also bottom-center, a supporting cue: "Reach for the circle."
+States per target:
+Waiting: circle idle, gentle 1.6 s breathing pulse (scale 1 → 1.04 → 1). No sound.
+Approached (fingertip within 80 px): circle fills sage-500, ring thickens to 6 px, subtle sage glow (box-shadow 0 0 32px sage-500 at 40 %).
+Hit: circle scales 1 → 1.3 in 180 ms, fades out. A soft sage burst (3 small dots radiating). Optional soft chime if audio enabled.
+Sequence complete: canvas empties, camera dims, center pill "You reached all 10 — nicely done." with "See results" button.
+Screen 4 — Results
+Layout: single column, max-width 720 px, centered on paper canvas. Left rail returns.
+Top: mono label "Session complete" · Fraunces 40 headline "Nicely done, that's another one in the bank." (never a numeric grade as the headline).
+Two big score cards, stacked, each 720×160 px, paper surface, 16 px radius, 1 px line border:
+Card A — Accuracy (tracing) or Average time per target (reach). Left side: Fraunces 72 number in sage, followed by "%" or "s" in mono. Right side: plain-language sentence in Inter 20, e.g. "Your line stayed close to the shape most of the way. Nice control." A subtle 8 px sage bar underneath shows the percentage.
+Card B — Smoothness (tracing) or Path efficiency (reach). Same structure. Sentence e.g. "Your movement was steady with a few small wobbles — that's expected."
+Sentence library: three sentence bands per metric — high (>80 %), medium (50–80 %), lower (<50 %). Lower bands are still warm: "This one was harder today. Your effort still counts."
+Bottom actions, two buttons side-by-side full width: sage primary "Try again" 72 px · ghost secondary "Back to exercises" 72 px.
+Never display: a red score, a letter grade, a leaderboard, a percentile.
+
+Screen 5 — Progress history
+Layout: standard app layout with left rail. Main area has a page title Fraunces 40 "Progress" and a small mono subtitle "Everything stays on this computer."
+Filter row: three big pill toggles — "All exercises" (default selected, sage fill) · "Tracing" · "Reach-to-target". No dropdowns.
+Chart card: 1080×360 px, paper surface. Two line series — Accuracy in sage-700, Smoothness in clay-500 — plotted across the user's past sessions (x-axis dates, y-axis 0–100 %). Lines 3 px, no fill area, generous grid at 25 / 50 / 75 in line color. Legend top-right using labeled colored dots (never rely on color alone). Hovering a session shows a paper tooltip with date, exercise, both scores.
+Session history list below chart, each row 72 px tall, paper card with 1 px line border, 12 px radius. Row contents left-to-right: date (Fraunces 20, e.g. "Tue 15 Jul"), exercise name (Inter 18), duration (mono 14), and the two scores as small labeled pills ("Accuracy 82 %" · "Smoothness 74 %"). Rows are keyboard-focusable and expand on click to show that session's chart snippet.
+Empty state for first-time users: centered illustration — a simple sage circle with a clay trail arcing through it, in the same style as the exercise previews. Below: Fraunces 32 "No sessions yet." · Inter 18 "Finish your first exercise to start seeing your progress here." · a sage primary button 64 px "Start an exercise" that routes to the exercise-select screen.
+
+Universal components to build once and reuse
+Primary button — sage-700 fill, white text, 12 px radius, min 56 px, 64 px on session screens.
+Secondary button — paper fill, ink border 1 px, ink text.
+Danger button — terracotta fill, white text. Only used for "End now" and "Report pain".
+Big-choice card — used for hand, difficulty, exercise, filter, shape. Radius 16, 3 px sage border when selected, checkmark top-right.
+Cue pill — dark ink 72 % + backdrop-blur, white text 20–24 px, full-round radius. Slides down 220 ms, dwells, fades.
+Feedback message — icon circle + bold headline + optional 1-line detail. Four tones: sage / amber / terracotta / slate. Never red, never uses the words "error" or "wrong".
+Score card — big Fraunces number + plain-language sentence + thin sage bar.
+Privacy chip — bottom-left, always visible outside of results/history full-screen states. Text: "Recording locally · nothing uploaded".
+Motion
+All transitions 220–320 ms, ease-out. No bouncy easing. Rep and target-hit confirmations use a gentle scale (1 → 1.08 → 1 in 180 ms). Cue pills slide + fade. Page transitions cross-fade in 260 ms. Everything respects prefers-reduced-motion — in that mode replace motion with instant state changes.
+
+Copy examples (use verbatim)
+Setup Q1: "Which hand are you working on today?"
+Setup Q2: "How challenging should today feel?"
+Exercise-select heading: "Choose today's exercise."
+Tracing idle cue: "Move your hand to the green dot to begin."
+Reach idle cue: "Reach for the circle."
+Sequence complete: "You reached all ten — nicely done."
+Exit dialog: "End this exercise? Your progress is saved."
+Results headline (never numeric): "Nicely done, that's another one in the bank."
+Empty progress state: "No sessions yet. Finish your first exercise to start seeing your progress here."
+Privacy chip (always): "Recording locally · nothing uploaded."
+What NOT to do
+No login, sign-up, account, pricing, upgrade, or share buttons anywhere.
+No small text. Ever. If it doesn't fit at 18 px, it doesn't belong.
+No dropdowns, sliders, or free-text inputs anywhere in the therapy flows.
+No red — use terracotta for danger and clay for missed days.
+No leaderboards, streak-shaming, percentiles, letter grades, or badges shaped like trophies/medals.
+No emoji, no cartoon mascots, no confetti.
+No timers ticking during an exercise — do not add urgency the user did not ask for.
+No blue medical clip-art. No stethoscope icons. No sterile pure white.
+Deliverable
+Produce all five screens as separate routes (/setup, /exercises, /session, /results, /progress) in a single desktop web app. Ship a working camera-feed placeholder (a mirrored gradient rectangle is fine) and a functioning drawing canvas that draws a stroke when the mouse moves — hand-tracking will be wired in later. Include a small persistent developer control bottom-right to jump between the five screens for review.
