@@ -9,6 +9,15 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import {
+  generateExercise,
+  isPointOnTarget,
+  shapePoints,
+  targetPositionAt,
+  type Exercise,
+  type ExerciseCategory,
+  type TracingExercise,
+} from "./exercises";
 
 /* ─── palette ─────────────────────────────────────────────────────────────── */
 const P = {
@@ -31,10 +40,8 @@ const P = {
 type Screen = "setup" | "exercises" | "session" | "results" | "progress";
 type Hand = "left" | "right";
 type Difficulty = "easy" | "medium" | "hard";
-type ExerciseType = "tracing" | "reach";
-type TraceShape = "line" | "circle" | "spiral" | "wave";
+type ExerciseType = ExerciseCategory;
 type SessionPhase =
-  | "shape-picker"
   | "tracing"
   | "tracing-complete"
   | "reaching"
@@ -816,115 +823,6 @@ function CuePill({ text }: { text: string }) {
   );
 }
 
-const SHAPES: { id: TraceShape; label: string }[] = [
-  { id: "line",   label: "Line" },
-  { id: "circle", label: "Circle" },
-  { id: "spiral", label: "Spiral" },
-  { id: "wave",   label: "Wave" },
-];
-
-function ShapeIcon({ id }: { id: TraceShape }) {
-  const s = P.sage300;
-  if (id === "line")
-    return (
-      <svg width="72" height="72" viewBox="0 0 72 72">
-        <line x1="16" y1="56" x2="56" y2="16" stroke={s} strokeWidth="5" strokeLinecap="round" />
-      </svg>
-    );
-  if (id === "circle")
-    return (
-      <svg width="72" height="72" viewBox="0 0 72 72">
-        <circle cx="36" cy="36" r="26" fill="none" stroke={s} strokeWidth="5" />
-      </svg>
-    );
-  if (id === "spiral") {
-    const pts = Array.from({ length: 120 }, (_, i) => {
-      const angle = (i / 120) * Math.PI * 4;
-      const r = 4 + 28 * (i / 120);
-      return `${i === 0 ? "M" : "L"} ${36 + r * Math.cos(angle)} ${36 + r * Math.sin(angle)}`;
-    }).join(" ");
-    return (
-      <svg width="72" height="72" viewBox="0 0 72 72">
-        <path d={pts} fill="none" stroke={s} strokeWidth="4" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  const wavePts = Array.from({ length: 56 }, (_, i) => {
-    const x = 8 + i;
-    const y = 36 + Math.sin((i / 56) * Math.PI * 3) * 20;
-    return `${i === 0 ? "M" : "L"} ${x} ${y}`;
-  }).join(" ");
-  return (
-    <svg width="72" height="72" viewBox="0 0 72 72">
-      <path d={wavePts} fill="none" stroke={s} strokeWidth="4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ShapePicker({
-  selected,
-  onSelect,
-  onStart,
-}: {
-  selected: TraceShape | null;
-  onSelect: (s: TraceShape) => void;
-  onStart: () => void;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 40,
-        background: "rgba(26,26,26,0.82)",
-        backdropFilter: "blur(16px)",
-      }}
-    >
-      <p
-        style={{
-          fontFamily: "'Fraunces', serif",
-          fontWeight: 600,
-          fontSize: 36,
-          color: "#fff",
-        }}
-      >
-        Choose a shape to trace.
-      </p>
-      <div style={{ display: "flex", gap: 20 }}>
-        {SHAPES.map(({ id }) => (
-          <button
-            key={id}
-            onClick={() => onSelect(id)}
-            style={{
-              width: 140,
-              height: 140,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 16,
-              background: selected === id ? P.sage50 : "rgba(255,255,255,0.07)",
-              border: selected === id
-                ? `3px solid ${P.sage}`
-                : "2px solid rgba(255,255,255,0.15)",
-              cursor: "pointer",
-              transition: "all 200ms ease-out",
-            }}
-          >
-            <ShapeIcon id={id} />
-          </button>
-        ))}
-      </div>
-      <PrimaryButton onClick={onStart} disabled={!selected} height={72}>
-        Start tracing
-      </PrimaryButton>
-    </div>
-  );
-}
-
 function ExitDialog({
   onKeepGoing,
   onEnd,
@@ -945,12 +843,23 @@ function ExitDialog({
         zIndex: 10,
       }}
     >
+      <style>{`
+        .exit-dialog-card { padding: 40px; }
+        .exit-dialog-actions { display: flex; gap: 16px; }
+        /* basis 0 + equal grow keeps both buttons the same width regardless of label length */
+        .exit-dialog-action { flex: 1 1 0; min-width: 0; }
+        @media (max-width: 520px) {
+          .exit-dialog-card { padding: 28px 20px; }
+          .exit-dialog-actions { flex-direction: column; }
+          .exit-dialog-action { flex: 0 0 auto; width: 100%; }
+        }
+      `}</style>
       <div
+        className="exit-dialog-card"
         style={{
           background: P.paper,
           border: `1px solid ${P.border}`,
           borderRadius: 20,
-          padding: "40px 40px 40px",
           maxWidth: 480,
           width: "90%",
           display: "flex",
@@ -969,27 +878,32 @@ function ExitDialog({
         >
           End this exercise? Your progress is saved.
         </p>
-        <div style={{ display: "flex", gap: 12 }}>
-          <PrimaryButton onClick={onKeepGoing} fullWidth height={64}>
-            Keep going
-          </PrimaryButton>
-          <button
-            onClick={onEnd}
-            style={{
-              flex: 1,
-              height: 64,
-              background: "transparent",
-              border: `1px solid ${P.border}`,
-              borderRadius: 12,
-              color: P.terracotta,
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 500,
-              fontSize: 18,
-              cursor: "pointer",
-            }}
-          >
-            End now
-          </button>
+        <div className="exit-dialog-actions">
+          <div className="exit-dialog-action">
+            <PrimaryButton onClick={onKeepGoing} fullWidth height={64}>
+              Keep going
+            </PrimaryButton>
+          </div>
+          <div className="exit-dialog-action">
+            <button
+              onClick={onEnd}
+              style={{
+                width: "100%",
+                height: 64,
+                padding: "0 16px",
+                background: "transparent",
+                border: `1px solid ${P.border}`,
+                borderRadius: 12,
+                color: P.terracotta,
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 500,
+                fontSize: 18,
+                cursor: "pointer",
+              }}
+            >
+              End now
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1000,84 +914,53 @@ function ExitDialog({
 
 function drawShapeGuide(
   ctx: CanvasRenderingContext2D,
-  shape: TraceShape,
+  ex: TracingExercise,
   w: number,
   h: number
 ) {
   ctx.clearRect(0, 0, w, h);
-  const cx = w / 2;
-  const cy = h / 2;
-  const r = Math.min(w, h) * 0.27;
+  const pts = shapePoints(ex);
+  if (pts.length === 0) return;
 
   ctx.strokeStyle = "rgba(168, 196, 160, 0.4)";
   ctx.lineWidth = 6;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+  ctx.stroke();
 
-  if (shape === "line") {
-    ctx.moveTo(cx - r * 1.2, cy + r * 0.6);
-    ctx.lineTo(cx + r * 1.2, cy - r * 0.6);
-    ctx.stroke();
-    // start dot
-    ctx.beginPath();
-    ctx.arc(cx - r * 1.2, cy + r * 0.6, 10, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(168,196,160,0.8)";
-    ctx.fill();
-  } else if (shape === "circle") {
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.stroke();
-    // start dot
-    ctx.beginPath();
-    ctx.arc(cx, cy - r, 10, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(168,196,160,0.8)";
-    ctx.fill();
-  } else if (shape === "spiral") {
-    for (let i = 0; i <= 200; i++) {
-      const angle = (i / 200) * Math.PI * 4;
-      const rad = (r * 0.08) + r * 0.92 * (i / 200);
-      const x = cx + rad * Math.cos(angle - Math.PI / 2);
-      const y = cy + rad * Math.sin(angle - Math.PI / 2);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    // start dot
-    ctx.beginPath();
-    ctx.arc(cx, cy - r * 0.08, 10, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(168,196,160,0.8)";
-    ctx.fill();
-  } else {
-    const startX = cx - r * 1.3;
-    const endX = cx + r * 1.3;
-    ctx.moveTo(startX, cy);
-    for (let x = startX; x <= endX; x += 3) {
-      const t = (x - startX) / (endX - startX);
-      const y = cy + Math.sin(t * Math.PI * 3) * r * 0.55;
-      ctx.lineTo(x, y);
-    }
-    ctx.stroke();
-    // start dot
-    ctx.beginPath();
-    ctx.arc(startX, cy, 10, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(168,196,160,0.8)";
-    ctx.fill();
-  }
+  // start dot
+  ctx.beginPath();
+  ctx.arc(pts[0].x, pts[0].y, 10, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(168,196,160,0.8)";
+  ctx.fill();
 }
 
 /* ─── screen 3: session ──────────────────────────────────────────────────── */
 
 function SessionScreen({
-  exercise,
+  exercise: category,
   onComplete,
 }: {
   exercise: ExerciseType;
   onComplete: (r: { accuracy: number; smoothness: number }) => void;
 }) {
-  const [phase, setPhase] = useState<SessionPhase>(
-    exercise === "tracing" ? "shape-picker" : "reaching"
+  // The user chose the category; the specific exercise is rolled here, once.
+  // App remounts this component per session, so every start re-rolls.
+  const [plan] = useState<Exercise>(() =>
+    generateExercise(category, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
   );
-  const [selectedShape, setSelectedShape] = useState<TraceShape | null>(null);
+  const reach = plan.category === "reach" ? plan : null;
+  const totalTargets = reach ? reach.targets.length : 0;
+
+  const [phase, setPhase] = useState<SessionPhase>(
+    plan.category === "tracing" ? "tracing" : "reaching"
+  );
   const [showExit, setShowExit] = useState(false);
   const [modeIndicator, setModeIndicator] = useState<"Drawing" | "Hovering" | "Paused">("Paused");
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -1086,13 +969,8 @@ function SessionScreen({
   const [hitsCount, setHitsCount] = useState(0);
   const [approaching, setApproaching] = useState(false);
   const [hitFlash, setHitFlash] = useState(false);
+  const [now, setNow] = useState(() => performance.now());
 
-  const [targets] = useState<{ x: number; y: number }[]>(() =>
-    Array.from({ length: 10 }, () => ({
-      x: 220 + Math.random() * (window.innerWidth - 440),
-      y: 140 + Math.random() * (window.innerHeight - 320),
-    }))
-  );
   const currentTargetIdx = useRef(0);
   const approachTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [displayTargetIdx, setDisplayTargetIdx] = useState(0);
@@ -1112,13 +990,13 @@ function SessionScreen({
 
   // Draw shape guide when tracing starts
   useEffect(() => {
-    if (phase !== "tracing" || !selectedShape) return;
+    if (phase !== "tracing" || plan.category !== "tracing") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    drawShapeGuide(ctx, selectedShape, canvas.width, canvas.height);
-  }, [phase, selectedShape]);
+    drawShapeGuide(ctx, plan, canvas.width, canvas.height);
+  }, [phase, plan]);
 
   // Mouse drawing (tracing)
   useEffect(() => {
@@ -1174,34 +1052,54 @@ function SessionScreen({
     setDisplayTargetIdx(next);
     setHitsCount(next);
 
-    if (next >= 10) {
+    if (next >= totalTargets) {
       setTimeout(() => setPhase("reaching-complete"), 420);
     }
-  }, []);
+  }, [totalTargets]);
 
-  useEffect(() => {
-    if (phase !== "reaching") return;
+  /**
+   * Every reach hit test funnels through here. Mouse events drive it today;
+   * hand tracking will call it with a fingertip landmark in screen px.
+   */
+  const onHandPoint = useCallback(
+    (x: number, y: number) => {
+      if (!reach || currentTargetIdx.current >= reach.targets.length) return;
+      const target = reach.targets[currentTargetIdx.current];
+      const over = isPointOnTarget({ x, y }, target, reach.motion, performance.now());
 
-    const move = (e: MouseEvent) => {
-      if (currentTargetIdx.current >= 10) return;
-      const t = targets[currentTargetIdx.current];
-      const dist = Math.hypot(e.clientX - t.x, e.clientY - t.y);
-      if (dist < 72 && !approachTimer.current) {
+      if (over && !approachTimer.current) {
         setApproaching(true);
-        approachTimer.current = setTimeout(doHit, 420);
-      } else if (dist >= 72 && approachTimer.current) {
+        approachTimer.current = setTimeout(doHit, reach.dwellMs);
+      } else if (!over && approachTimer.current) {
         clearTimeout(approachTimer.current);
         approachTimer.current = null;
         setApproaching(false);
       }
-    };
+    },
+    [reach, doHit]
+  );
 
+  useEffect(() => {
+    if (phase !== "reaching") return;
+    const move = (e: MouseEvent) => onHandPoint(e.clientX, e.clientY);
     window.addEventListener("mousemove", move);
     return () => {
       window.removeEventListener("mousemove", move);
       if (approachTimer.current) clearTimeout(approachTimer.current);
     };
-  }, [phase, targets, doHit]);
+  }, [phase, onHandPoint]);
+
+  // Animate moving targets
+  useEffect(() => {
+    if (phase !== "reaching" || !reach?.motion) return;
+    let raf = 0;
+    const loop = () => {
+      setNow(performance.now());
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [phase, reach]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1221,7 +1119,12 @@ function SessionScreen({
     });
 
   const isComplete = phase === "tracing-complete" || phase === "reaching-complete";
-  const currentTarget = displayTargetIdx < 10 ? targets[displayTargetIdx] : null;
+  const currentTarget =
+    reach && displayTargetIdx < reach.targets.length
+      ? reach.targets[displayTargetIdx]
+      : null;
+  const currentTargetPos =
+    reach && currentTarget ? targetPositionAt(currentTarget, reach.motion, now) : null;
 
   return (
     <div
@@ -1266,25 +1169,16 @@ function SessionScreen({
         }}
       />
 
-      {/* Shape picker overlay */}
-      {phase === "shape-picker" && (
-        <ShapePicker
-          selected={selectedShape}
-          onSelect={setSelectedShape}
-          onStart={() => { if (selectedShape) setPhase("tracing"); }}
-        />
-      )}
-
       {/* Reach target */}
-      {phase === "reaching" && currentTarget && (
+      {phase === "reaching" && currentTarget && currentTargetPos && (
         <div
           onClick={doHit}
           style={{
             position: "absolute",
-            left: currentTarget.x - 60,
-            top: currentTarget.y - 60,
-            width: 120,
-            height: 120,
+            left: currentTargetPos.x - currentTarget.radius,
+            top: currentTargetPos.y - currentTarget.radius,
+            width: currentTarget.radius * 2,
+            height: currentTarget.radius * 2,
             borderRadius: "50%",
             background: approaching ? P.sage : P.sage50,
             border: `${approaching ? 6 : 4}px solid ${approaching ? P.sage : P.sage700}`,
@@ -1292,7 +1186,10 @@ function SessionScreen({
               ? `0 0 32px rgba(168,196,160,0.45), 0 0 64px rgba(168,196,160,0.2)`
               : "none",
             cursor: "pointer",
-            transition: "all 200ms ease-out",
+            // A moving target can't ease its position or it lags behind the hit test.
+            transition: reach?.motion
+              ? "background 200ms ease-out, border-color 200ms ease-out"
+              : "all 200ms ease-out",
             animation: approaching ? "none" : "breathe 1.6s ease-in-out infinite",
             transform: hitFlash ? "scale(1.25)" : "scale(1)",
           }}
@@ -1341,7 +1238,7 @@ function SessionScreen({
             transform: "translateX(-50%)",
           }}
         >
-          <CuePill text="Move your hand to the green dot to begin." />
+          <CuePill text={plan.instruction} />
         </div>
       )}
       {phase === "tracing" && hasDrawn && (
@@ -1379,7 +1276,7 @@ function SessionScreen({
           }}
         >
           <div style={{ display: "flex", gap: 6 }}>
-            {Array.from({ length: 10 }, (_, i) => (
+            {Array.from({ length: totalTargets }, (_, i) => (
               <div
                 key={i}
                 style={{
@@ -1399,9 +1296,9 @@ function SessionScreen({
               color: "rgba(255,255,255,0.65)",
             }}
           >
-            {hitsCount} / 10
+            {hitsCount} / {totalTargets}
           </span>
-          <CuePill text="Reach for the circle." />
+          <CuePill text={plan.instruction} />
         </div>
       )}
 
@@ -1422,9 +1319,11 @@ function SessionScreen({
         >
           <CuePill
             text={
-              phase === "reaching-complete"
-                ? "You reached all ten — nicely done."
-                : "Done — let's see how you did."
+              phase !== "reaching-complete"
+                ? "Done — let's see how you did."
+                : totalTargets > 1
+                ? `You reached all ${totalTargets} — nicely done.`
+                : "Nicely done."
             }
           />
           <PrimaryButton onClick={handleSeeResults} height={72}>
