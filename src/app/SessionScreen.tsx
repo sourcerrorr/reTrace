@@ -1,0 +1,590 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
+import {
+  generateExercise,
+  targetPositionAt,
+  type Difficulty,
+  type Exercise,
+  type ExerciseCategory,
+} from "./exercises";
+import type { HandPoint } from "./input";
+import { HandCamera } from "./components/HandCamera";
+import { PrimaryButton, SecondaryButton, PrivacyChip } from "./components/primitives";
+import { P } from "./theme";
+import { USE_HAND_TRACKING } from "./runtime/config";
+import type { SessionPhase } from "./runtime/types";
+import { useTracingRuntime } from "./hooks/useTracingRuntime";
+import { useReachRuntime } from "./hooks/useReachRuntime";
+import { useHoldRuntime } from "./hooks/useHoldRuntime";
+import { useMovingTargetRuntime } from "./hooks/useMovingTargetRuntime";
+
+/* ─── session sub-components ─────────────────────────────────────────────── */
+
+function ModePill({ mode }: { mode: "Drawing" | "Hovering" | "Paused" }) {
+  const dot: Record<string, string> = {
+    Drawing: P.sage,
+    Hovering: P.amber,
+    Paused: P.ink3,
+  };
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "0 20px",
+        height: 56,
+        borderRadius: 9999,
+        background: "rgba(26,26,26,0.72)",
+        backdropFilter: "blur(12px)",
+        color: "#fff",
+        fontFamily: "'Inter', sans-serif",
+        fontWeight: 600,
+        fontSize: 20,
+        animation: "slideFade 220ms ease-out",
+      }}
+    >
+      <span
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          background: dot[mode],
+          flexShrink: 0,
+        }}
+      />
+      {mode}
+    </div>
+  );
+}
+
+function CuePill({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "0 32px",
+        height: 64,
+        borderRadius: 9999,
+        background: "rgba(26,26,26,0.72)",
+        backdropFilter: "blur(12px)",
+        color: "#fff",
+        fontFamily: "'Inter', sans-serif",
+        fontWeight: 600,
+        fontSize: 22,
+        whiteSpace: "nowrap",
+        animation: "slideFade 220ms ease-out",
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function ExitDialog({
+  onKeepGoing,
+  onEnd,
+}: {
+  onKeepGoing: () => void;
+  onEnd: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(26,26,26,0.72)",
+        backdropFilter: "blur(8px)",
+        zIndex: 10,
+      }}
+    >
+      <style>{`
+        .exit-dialog-card { padding: 40px; }
+        .exit-dialog-actions { display: flex; gap: 16px; }
+        /* basis 0 + equal grow keeps both buttons the same width regardless of label length */
+        .exit-dialog-action { flex: 1 1 0; min-width: 0; }
+        @media (max-width: 520px) {
+          .exit-dialog-card { padding: 28px 20px; }
+          .exit-dialog-actions { flex-direction: column; }
+          .exit-dialog-action { flex: 0 0 auto; width: 100%; }
+        }
+      `}</style>
+      <div
+        className="exit-dialog-card"
+        style={{
+          background: P.paper,
+          border: `1px solid ${P.border}`,
+          borderRadius: 20,
+          maxWidth: 480,
+          width: "90%",
+          display: "flex",
+          flexDirection: "column",
+          gap: 28,
+        }}
+      >
+        <p
+          style={{
+            fontFamily: "'Fraunces', serif",
+            fontWeight: 600,
+            fontSize: 28,
+            color: P.ink,
+            lineHeight: 1.3,
+          }}
+        >
+          End this exercise? Your progress is saved.
+        </p>
+        <div className="exit-dialog-actions">
+          <div className="exit-dialog-action">
+            <PrimaryButton onClick={onKeepGoing} fullWidth height={64}>
+              Keep going
+            </PrimaryButton>
+          </div>
+          <div className="exit-dialog-action">
+            <button
+              onClick={onEnd}
+              style={{
+                width: "100%",
+                height: 64,
+                padding: "0 16px",
+                background: "transparent",
+                border: `1px solid ${P.border}`,
+                borderRadius: 12,
+                color: P.terracotta,
+                fontFamily: "'Inter', sans-serif",
+                fontWeight: 500,
+                fontSize: 18,
+                cursor: "pointer",
+              }}
+            >
+              End now
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── screen 3: session ──────────────────────────────────────────────────── */
+
+export function SessionScreen({
+  exercise: category,
+  difficulty,
+  onComplete,
+}: {
+  exercise: ExerciseCategory;
+  difficulty: Difficulty;
+  onComplete: (r: { accuracy: number; smoothness: number }) => void;
+}) {
+  // The user chose the category and difficulty; the specific exercise (and how
+  // its difficulty scales) is rolled here, once. App remounts per session.
+  const [plan] = useState<Exercise>(() =>
+    generateExercise(
+      category,
+      { width: window.innerWidth, height: window.innerHeight },
+      difficulty
+    )
+  );
+  const reach = plan.category === "reach" ? plan : null;
+  const totalTargets = reach ? reach.targets.length : 0;
+  const isHold = reach?.variation === "hold";
+
+  const [phase, setPhase] = useState<SessionPhase>(
+    plan.category === "tracing" ? "tracing" : "reaching"
+  );
+  const [showExit, setShowExit] = useState(false);
+
+  // Webcam element from HandCamera; hand tracking can't start until it exists.
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null);
+
+  // Drawing canvas + fingertip cursor. Owned here (rendered below), driven
+  // imperatively by the runtime hooks so they update every frame without
+  // re-rendering.
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
+
+  // Latest fingertip position, published by the reach runtime's input loop and
+  // read by the hold runtime. Shared so hold doesn't subscribe to input twice.
+  const lastPointRef = useRef<HandPoint | null>(null);
+
+  const completeReaching = useCallback(() => setPhase("reaching-complete"), []);
+
+  // ─── runtime hooks: each owns one system; this component just wires them ───
+  const tracing = useTracingRuntime({ plan, phase, video, canvasRef, cursorRef });
+  const reachRt = useReachRuntime({
+    reach,
+    phase,
+    isHold,
+    video,
+    cursorRef,
+    lastPointRef,
+    onComplete: completeReaching,
+  });
+  const hold = useHoldRuntime({
+    reach,
+    phase,
+    isHold,
+    lastPointRef,
+    onComplete: completeReaching,
+  });
+  const moving = useMovingTargetRuntime({ reach, phase });
+
+  // ─── state the UI reads (which mechanic is active decides the source) ───
+  const { modeIndicator, hasDrawn } = tracing;
+  const { hitsCount, hitFlash, displayTargetIdx } = reachRt;
+  const approaching = isHold ? hold.insideTarget : reachRt.approaching;
+  const holdProgress = hold.holdProgress;
+  const now = moving.now;
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const kd = (e: KeyboardEvent) => {
+      if (e.key === " ") { e.preventDefault(); tracing.setModeIndicator((m) => m === "Paused" ? "Hovering" : "Paused"); }
+      if (e.key === "Escape") setShowExit(true);
+      if (e.key === "Enter" && showExit) setShowExit(false);
+    };
+    window.addEventListener("keydown", kd);
+    return () => window.removeEventListener("keydown", kd);
+  }, [showExit, tracing.setModeIndicator]);
+
+  const handleSeeResults = () =>
+    onComplete({
+      accuracy: 76 + Math.floor(Math.random() * 14),
+      smoothness: 68 + Math.floor(Math.random() * 14),
+    });
+
+  const isComplete = phase === "tracing-complete" || phase === "reaching-complete";
+  const currentTarget =
+    reach && displayTargetIdx < reach.targets.length
+      ? reach.targets[displayTargetIdx]
+      : null;
+  const currentTargetPos =
+    reach && currentTarget ? targetPositionAt(currentTarget, reach.motion, now) : null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        overflow: "hidden",
+        background: P.ink,
+      }}
+    >
+      {/* Webcam layer — the real mirrored camera when hand tracking drives
+          input, the dark green placeholder otherwise */}
+      {USE_HAND_TRACKING ? (
+        // -2px pushes HandCamera's 1px card border just offscreen; its rounded
+        // corners blend into the identical ink background.
+        <div style={{ position: "absolute", inset: -2 }}>
+          <HandCamera onVideoReady={setVideo} />
+          {/* Scrim so the guide shape and stroke stay readable over video */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.38)",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
+      ) : (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(140deg, #222e1a 0%, #19240f 35%, #0e1808 65%, #1c2814 100%)",
+            filter: "saturate(0.85) brightness(0.95)",
+            transform: "scaleX(-1)",
+          }}
+        />
+      )}
+      {/* Ambient light glow */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "radial-gradient(ellipse 60% 50% at 30% 35%, rgba(168,196,160,0.18) 0%, transparent 60%), radial-gradient(ellipse 40% 40% at 72% 62%, rgba(168,196,160,0.12) 0%, transparent 50%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Drawing canvas */}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          opacity: phase === "tracing" || phase === "tracing-complete" ? 1 : 0,
+          cursor: phase === "tracing" ? "crosshair" : "default",
+          pointerEvents: phase === "tracing" ? "auto" : "none",
+        }}
+      />
+
+      {/* Fingertip cursor — follows the hand every frame; fills while drawing.
+          Positioned imperatively via cursorRef (see moveCursor). */}
+      {USE_HAND_TRACKING && (phase === "tracing" || phase === "reaching") && (
+        <div
+          ref={cursorRef}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 26,
+            height: 26,
+            borderRadius: "50%",
+            border: `2px solid ${P.sage300}`,
+            background: "transparent",
+            boxShadow: "0 0 12px rgba(168,196,160,0.55)",
+            pointerEvents: "none",
+            opacity: 0,
+            transform: "translate(-100px, -100px)",
+            transition: "background 120ms ease-out, border-color 120ms ease-out",
+            zIndex: 4,
+          }}
+        />
+      )}
+
+      {/* Reach target. Completion is dwell/hold only — no click shortcut, so
+          reaching stays a controlled movement rather than an instant tap. */}
+      {phase === "reaching" && currentTarget && currentTargetPos && (
+        <div
+          style={{
+            position: "absolute",
+            left: currentTargetPos.x - currentTarget.radius,
+            top: currentTargetPos.y - currentTarget.radius,
+            width: currentTarget.radius * 2,
+            height: currentTarget.radius * 2,
+            borderRadius: "50%",
+            background: approaching ? P.sage : P.sage50,
+            border: `${approaching ? 6 : 4}px solid ${approaching ? P.sage : P.sage700}`,
+            boxShadow: approaching
+              ? `0 0 32px rgba(168,196,160,0.45), 0 0 64px rgba(168,196,160,0.2)`
+              : "none",
+            pointerEvents: "none",
+            // A moving target can't ease its position or it lags behind the hit test.
+            transition: reach?.motion
+              ? "background 200ms ease-out, border-color 200ms ease-out"
+              : "all 200ms ease-out",
+            animation: approaching ? "none" : "breathe 1.6s ease-in-out infinite",
+            transform: hitFlash ? "scale(1.25)" : "scale(1)",
+          }}
+        />
+      )}
+
+      {/* Hold: countdown ring + seconds remaining, fed by continuous progress. */}
+      {phase === "reaching" && isHold && currentTarget && currentTargetPos && (() => {
+        const ringR = currentTarget.radius + 16;
+        const size = ringR * 2 + 8;
+        const circ = 2 * Math.PI * ringR;
+        const secLeft = Math.max(0, Math.ceil((reach!.dwellMs * (1 - holdProgress)) / 1000));
+        return (
+          <>
+            <svg
+              width={size}
+              height={size}
+              style={{
+                position: "absolute",
+                left: currentTargetPos.x - size / 2,
+                top: currentTargetPos.y - size / 2,
+                pointerEvents: "none",
+                zIndex: 3,
+                transform: "rotate(-90deg)",
+              }}
+            >
+              <circle cx={size / 2} cy={size / 2} r={ringR} fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={6} />
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={ringR}
+                fill="none"
+                stroke={P.sage300}
+                strokeWidth={6}
+                strokeLinecap="round"
+                strokeDasharray={circ}
+                strokeDashoffset={circ * (1 - holdProgress)}
+              />
+            </svg>
+            <span
+              style={{
+                position: "absolute",
+                left: currentTargetPos.x,
+                top: currentTargetPos.y,
+                transform: "translate(-50%, -50%)",
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 28,
+                fontWeight: 600,
+                color: P.ink,
+                pointerEvents: "none",
+                zIndex: 3,
+              }}
+            >
+              {secLeft}
+            </span>
+          </>
+        );
+      })()}
+
+      {/* Top-left mode indicator */}
+      {(phase === "tracing" || phase === "reaching") && (
+        <div style={{ position: "absolute", top: 24, left: 24 }}>
+          <ModePill mode={phase === "reaching" ? "Hovering" : modeIndicator} />
+        </div>
+      )}
+
+      {/* Top-right exit */}
+      <button
+        onClick={() => setShowExit(true)}
+        aria-label="Exit exercise"
+        style={{
+          position: "absolute",
+          top: 24,
+          right: 24,
+          width: 64,
+          height: 64,
+          borderRadius: "50%",
+          background: P.paper,
+          border: `1px solid ${P.border}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+          color: P.ink,
+          zIndex: 5,
+        }}
+      >
+        <X size={24} />
+      </button>
+
+      {/* Bottom-center: tracing cues */}
+      {phase === "tracing" && !hasDrawn && (
+        <div
+          style={{
+            position: "absolute",
+            top: "58%",
+            left: "50%",
+            transform: "translateX(-50%)",
+          }}
+        >
+          <CuePill text={plan.instruction} />
+        </div>
+      )}
+      {phase === "tracing" && hasDrawn && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 48,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          <CuePill text="Pinch to draw over the shape, then finish when ready." />
+          <div style={{ display: "flex", gap: 12 }}>
+            <SecondaryButton onClick={tracing.clearDrawing} height={64}>
+              Clear drawing
+            </SecondaryButton>
+            <PrimaryButton onClick={() => setPhase("tracing-complete")} height={64}>
+              Finish tracing
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom-center: reach cues */}
+      {phase === "reaching" && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 48,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", gap: 6 }}>
+            {Array.from({ length: totalTargets }, (_, i) => (
+              <div
+                key={i}
+                style={{
+                  width: 40,
+                  height: 8,
+                  borderRadius: 4,
+                  background: i < hitsCount ? P.sage : "rgba(255,255,255,0.18)",
+                  transition: "background 200ms ease-out",
+                }}
+              />
+            ))}
+          </div>
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 16,
+              color: "rgba(255,255,255,0.65)",
+            }}
+          >
+            {hitsCount} / {totalTargets}
+          </span>
+          <CuePill text={plan.instruction} />
+        </div>
+      )}
+
+      {/* Complete overlay */}
+      {isComplete && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 24,
+            background: "rgba(0,0,0,0.42)",
+            backdropFilter: "blur(6px)",
+          }}
+        >
+          <CuePill
+            text={
+              phase !== "reaching-complete"
+                ? "Done — let's see how you did."
+                : totalTargets > 1
+                ? `You reached all ${totalTargets} — nicely done.`
+                : "Nicely done."
+            }
+          />
+          <PrimaryButton onClick={handleSeeResults} height={72}>
+            See results
+          </PrimaryButton>
+        </div>
+      )}
+
+      {/* Bottom-left privacy */}
+      <div style={{ position: "absolute", bottom: 24, left: 24 }}>
+        <PrivacyChip dark />
+      </div>
+
+      {/* Exit dialog */}
+      {showExit && (
+        <ExitDialog
+          onKeepGoing={() => setShowExit(false)}
+          onEnd={() =>
+            onComplete({ accuracy: 65, smoothness: 58 })
+          }
+        />
+      )}
+    </div>
+  );
+}

@@ -11,6 +11,8 @@
 
 export type ExerciseCategory = "tracing" | "reach";
 
+export type Difficulty = "easy" | "medium" | "hard";
+
 export type TraceShape =
   | "circle"
   | "square"
@@ -70,9 +72,15 @@ export interface ReachTarget extends Point {
   radius: number;
 }
 
+export type MotionPath = "horizontal" | "vertical" | "circular";
+
 export interface TargetMotion {
-  axis: "x" | "y";
-  amplitude: number;
+  /** Shape of the path the target sweeps. */
+  path: MotionPath;
+  /** Amplitude for linear paths, circle radius for circular — in px. */
+  radius: number;
+  /** Time for one full cycle. Derived from a difficulty-scaled linear speed so
+   *  bigger paths don't move faster (keeps tracking realistic for the hand). */
   periodMs: number;
 }
 
@@ -99,11 +107,42 @@ const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.lengt
  *  on small viewports (rand() would otherwise return an out-of-bounds value). */
 const between = (lo: number, hi: number) => (hi <= lo ? (lo + hi) / 2 : rand(lo, hi));
 
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 let seq = 0;
 const nextId = (prefix: string) => `${prefix}-${++seq}`;
 
-const DEFAULT_DWELL_MS = 420;
-const HOLD_DWELL_MS = 3000;
+/* ─── difficulty tuning ───────────────────────────────────────────────────── */
+/**
+ * One place that turns the chosen difficulty into concrete exercise parameters.
+ * Every reach variation reads from here rather than branching on difficulty,
+ * so scaling stays consistent and tweakable.
+ *
+ *   radiusScale  target size (bigger = easier)
+ *   dwellScale   how long to confirm a static/tracking hit (longer = harder)
+ *   countScale   how many targets (more = harder)
+ *   trackSpeedPx linear speed of the moving target, px/s (faster = harder)
+ *   holdMs       required continuous hold for the stability exercise
+ */
+interface DifficultyTuning {
+  radiusScale: number;
+  dwellScale: number;
+  countScale: number;
+  trackSpeedPx: number;
+  holdMs: number;
+}
+
+const DIFFICULTY_TUNING: Record<Difficulty, DifficultyTuning> = {
+  easy:   { radiusScale: 1.28, dwellScale: 0.7, countScale: 0.6, trackSpeedPx: 110, holdMs: 2500 },
+  medium: { radiusScale: 1.0,  dwellScale: 1.0, countScale: 1.0, trackSpeedPx: 175, holdMs: 3500 },
+  hard:   { radiusScale: 0.74, dwellScale: 1.4, countScale: 1.45, trackSpeedPx: 260, holdMs: 5000 },
+};
+
+// Base values at medium difficulty; the tuning scalers move around these.
+const BASE_RADIUS = 60;
+const BASE_DWELL_MS = 480;
+const BASE_TRACK_DWELL_MS = 1600; // sustained contact to clear a moving target
+const MIN_TARGET_RADIUS = 40; // keep targets catchable under fingertip jitter
 
 /* ─── tracing ─────────────────────────────────────────────────────────────── */
 
@@ -149,15 +188,25 @@ function makeTargets(
   return Array.from({ length: count }, (_, i) => ({ id: i, ...make() }));
 }
 
-function generateReach(vp: Viewport): ReachExercise {
+/** Difficulty-scaled target count from a medium-difficulty base range. */
+function scaledCount(loBase: number, hiBase: number, scale: number): number {
+  const lo = Math.max(2, Math.round(loBase * scale));
+  const hi = Math.max(lo, Math.round(hiBase * scale));
+  return randInt(lo, hi);
+}
+
+function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
+  const t = DIFFICULTY_TUNING[difficulty];
   const variation = pick(REACH_VARIATIONS);
-  const radius = rand(48, 76);
+
+  const radius = clamp(BASE_RADIUS * t.radiusScale, MIN_TARGET_RADIUS, 120);
+  const dwellMs = Math.round(BASE_DWELL_MS * t.dwellScale);
   const b = targetBounds(vp, radius);
   const base = {
     id: nextId("reach"),
     category: "reach" as const,
     variation,
-    dwellMs: DEFAULT_DWELL_MS,
+    dwellMs,
     motion: null,
   };
 
@@ -169,8 +218,8 @@ function generateReach(vp: Viewport): ReachExercise {
       const hi = side === "left" ? b.minX + band : b.maxX;
       return {
         ...base,
-        instruction: `Reach out to the target on your ${side}.`,
-        targets: makeTargets(randInt(4, 8), () => ({
+        instruction: `Reach out to the target on your ${side}, and hold steady.`,
+        targets: makeTargets(scaledCount(4, 7, t.countScale), () => ({
           x: between(lo, hi),
           y: between(b.minY, b.maxY),
           radius,
@@ -182,8 +231,8 @@ function generateReach(vp: Viewport): ReachExercise {
       const band = (b.maxY - b.minY) * 0.3;
       return {
         ...base,
-        instruction: "Reach up to the target.",
-        targets: makeTargets(randInt(4, 8), () => ({
+        instruction: "Reach up to the target, and hold steady.",
+        targets: makeTargets(scaledCount(4, 7, t.countScale), () => ({
           x: between(b.minX, b.maxX),
           y: between(b.minY, b.minY + band),
           radius,
@@ -191,30 +240,54 @@ function generateReach(vp: Viewport): ReachExercise {
       };
     }
 
-    case "moving":
+    case "moving": {
+      const path = pick(["horizontal", "vertical", "circular"] as const);
+      const availHalfX = (b.maxX - b.minX) / 2;
+      const availHalfY = (b.maxY - b.minY) / 2;
+      const cx = (b.minX + b.maxX) / 2;
+      const cy = (b.minY + b.maxY) / 2;
+
+      // Path amplitude, capped so the whole sweep stays inside the play area
+      // (and not so wide that even slow motion outruns the hand).
+      let motionRadius: number;
+      let anchor: Point;
+      if (path === "horizontal") {
+        motionRadius = Math.min(availHalfX, 300);
+        anchor = { x: cx, y: between(b.minY, b.maxY) };
+      } else if (path === "vertical") {
+        motionRadius = Math.min(availHalfY, 240);
+        anchor = { x: between(b.minX, b.maxX), y: cy };
+      } else {
+        motionRadius = Math.min(availHalfX, availHalfY, 200);
+        anchor = { x: cx, y: cy };
+      }
+
+      // Period from a fixed linear speed: one cycle travels the whole path
+      // length (circumference, or 4×amplitude back-and-forth for a sine).
+      const pathLength =
+        path === "circular" ? 2 * Math.PI * motionRadius : 4 * motionRadius;
+      const periodMs = Math.round((pathLength / t.trackSpeedPx) * 1000);
+
+      // A touch larger so it stays catchable while moving.
+      const movingRadius = clamp(radius * 1.15, MIN_TARGET_RADIUS, 130);
+
       return {
         ...base,
-        instruction: "Follow the moving target.",
-        motion: {
-          axis: "x",
-          amplitude: Math.max(0, (b.maxX - b.minX) / 2),
-          periodMs: rand(4200, 7000),
-        },
-        targets: [
-          {
-            id: 0,
-            x: (b.minX + b.maxX) / 2,
-            y: between(b.minY, b.maxY),
-            radius,
-          },
-        ],
+        // Tracking is about sustained contact, so it takes longer than a tap.
+        dwellMs: Math.round(BASE_TRACK_DWELL_MS * t.dwellScale),
+        instruction: "Keep your fingertip on the moving target as it travels.",
+        motion: { path, radius: motionRadius, periodMs },
+        targets: [{ id: 0, x: anchor.x, y: anchor.y, radius: movingRadius }],
       };
+    }
 
     case "hold":
       return {
         ...base,
-        instruction: "Hold your hand over the target for 3 seconds.",
-        dwellMs: HOLD_DWELL_MS,
+        // Hold duration is the stability requirement; dwellMs carries it so the
+        // definition stays data-only and App runs the stability loop.
+        dwellMs: t.holdMs,
+        instruction: `Hold steady inside the target for ${Math.round(t.holdMs / 1000)} seconds.`,
         targets: [
           {
             id: 0,
@@ -230,8 +303,8 @@ function generateReach(vp: Viewport): ReachExercise {
       return {
         ...base,
         variation: "scatter",
-        instruction: "Touch the targets as they appear.",
-        targets: makeTargets(randInt(6, 10), () => ({
+        instruction: "Touch the targets as they appear, and hold each briefly.",
+        targets: makeTargets(scaledCount(6, 9, t.countScale), () => ({
           x: between(b.minX, b.maxX),
           y: between(b.minY, b.maxY),
           radius,
@@ -246,9 +319,12 @@ function generateReach(vp: Viewport): ReachExercise {
  */
 export function generateExercise(
   category: ExerciseCategory,
-  vp: Viewport
+  vp: Viewport,
+  difficulty: Difficulty
 ): Exercise {
-  return category === "tracing" ? generateTracing(vp) : generateReach(vp);
+  return category === "tracing"
+    ? generateTracing(vp)
+    : generateReach(vp, difficulty);
 }
 
 /* ─── geometry ────────────────────────────────────────────────────────────── */
@@ -341,18 +417,30 @@ export function shapePoints(ex: TracingExercise): Point[] {
   }
 }
 
-/** Where a target sits right now — `motion` targets orbit their anchor point. */
+/**
+ * Where a target sits right now. A `motion` target sweeps a continuous path
+ * anchored at (target.x, target.y): a horizontal/vertical sine, or a circle.
+ * All paths are smooth and periodic — no jumps.
+ */
 export function targetPositionAt(
   target: ReachTarget,
   motion: TargetMotion | null,
   now: number
 ): Point {
   if (!motion) return { x: target.x, y: target.y };
-  const phase = (now % motion.periodMs) / motion.periodMs;
-  const offset = Math.sin(phase * Math.PI * 2) * motion.amplitude;
-  return motion.axis === "x"
-    ? { x: target.x + offset, y: target.y }
-    : { x: target.x, y: target.y + offset };
+  const angle = ((now % motion.periodMs) / motion.periodMs) * Math.PI * 2;
+  switch (motion.path) {
+    case "horizontal":
+      return { x: target.x + Math.sin(angle) * motion.radius, y: target.y };
+    case "vertical":
+      return { x: target.x, y: target.y + Math.sin(angle) * motion.radius };
+    case "circular":
+    default:
+      return {
+        x: target.x + Math.cos(angle) * motion.radius,
+        y: target.y + Math.sin(angle) * motion.radius,
+      };
+  }
 }
 
 /**
