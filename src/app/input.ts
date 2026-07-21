@@ -9,15 +9,13 @@
  *
  *   handler      mouse               hand tracking
  *   onMove       mousemove           index fingertip position, every frame
- *   onEngage     mousedown           pinch start (thumb tip meets index tip) — not yet emitted
- *   onRelease    mouseup             pinch end / hand lost — not yet emitted
+ *   onEngage     mousedown           pinch start (thumb tip meets index tip)
+ *   onRelease    mouseup             pinch end / hand lost
  *
  * `createHandTrackingInputSource(video)` maps landmark 8 (index fingertip)
  * from normalized video coordinates to viewport px (mirrored in X — the
  * camera preview is mirrored) and emits onMove each processed frame.
- * onEngage/onRelease will come from pinch detection (landmarks 4↔8 distance
- * crossing a threshold) in a later milestone; until then the source is
- * movement-only.
+ * Pinch uses the original tip-distance-in-reference-px method (landmarks 4↔8).
  */
 
 import type { HandLandmarker } from "@mediapipe/tasks-vision";
@@ -132,7 +130,10 @@ function getHandLandmarker(): Promise<HandLandmarker> {
       );
       const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
       return HandLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: HAND_LANDMARKER_MODEL_URL, delegate: "GPU" },
+        baseOptions: {
+          modelAssetPath: HAND_LANDMARKER_MODEL_URL,
+          delegate: "GPU",
+        },
         runningMode: "VIDEO",
         numHands: 1,
       });
@@ -161,7 +162,10 @@ export function createHandTrackingInputSource(
   video: HTMLVideoElement,
   options: HandTrackingOptions = {}
 ): HandInputSource {
-  const { pinchStartPx, pinchEndPx, smoothing } = { ...DEFAULT_OPTIONS, ...options };
+  const { pinchStartPx, pinchEndPx, smoothing } = {
+    ...DEFAULT_OPTIONS,
+    ...options,
+  };
 
   let running = false;
   let rafId = 0;
@@ -197,7 +201,10 @@ export function createHandTrackingInputSource(
             // Only detect on fresh frames; rAF outpaces the camera.
             if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
               lastVideoTime = video.currentTime;
-              const result = landmarker.detectForVideo(video, performance.now());
+              const result = landmarker.detectForVideo(
+                video,
+                performance.now()
+              );
               const hand = result.landmarks[0];
               const tip = hand?.[INDEX_FINGERTIP];
               const thumb = hand?.[THUMB_TIP];

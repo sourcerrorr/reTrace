@@ -21,7 +21,6 @@ import type { ScoreResult } from "./scoring";
 
 /* ─── types ───────────────────────────────────────────────────────────────── */
 type Screen = "setup" | "exercises" | "session" | "results" | "progress";
-type Hand = "left" | "right";
 type ExerciseType = ExerciseCategory;
 
 /* ─── mock data ──────────────────────────────────────────────────────────── */
@@ -227,11 +226,10 @@ function DevNav({ onNavigate }: { onNavigate: (s: Screen) => void }) {
 function SetupScreen({
   onNext,
 }: {
-  onNext: (h: Hand, d: Difficulty) => void;
+  onNext: (d: Difficulty) => void;
 }) {
-  const [hand, setHand] = useState<Hand | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
-  const ready = hand !== null && difficulty !== null;
+  const ready = difficulty !== null;
 
   const difficulties: { id: Difficulty; title: string; desc: string }[] = [
     { id: "easy",   title: "Easy",   desc: "Larger targets, more time." },
@@ -252,83 +250,6 @@ function SetupScreen({
       }}
     >
       <div style={{ width: "100%", maxWidth: 640, display: "flex", flexDirection: "column", gap: 32 }}>
-        {/* Q1 */}
-        <div
-          style={{
-            background: P.paper,
-            border: `1px solid ${P.border}`,
-            borderRadius: 20,
-            padding: 32,
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "'Inter', sans-serif",
-              fontSize: 22,
-              fontWeight: 600,
-              color: P.ink,
-              marginBottom: 24,
-            }}
-          >
-            Which hand are you working on today?
-          </p>
-          <div style={{ display: "flex", gap: 16 }}>
-            {(["left", "right"] as Hand[]).map((h) => (
-              <button
-                key={h}
-                onClick={() => setHand(h)}
-                style={{
-                  position: "relative",
-                  width: 200,
-                  height: 160,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 12,
-                  borderRadius: 16,
-                  background: hand === h ? P.sage50 : P.bone,
-                  border: hand === h ? `3px solid ${P.sage}` : `1px solid ${P.border}`,
-                  cursor: "pointer",
-                  transition: "all 200ms ease-out",
-                }}
-              >
-                {hand === h && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: 12,
-                      right: 12,
-                      width: 24,
-                      height: 24,
-                      borderRadius: "50%",
-                      background: P.sage,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Check size={14} color="#fff" strokeWidth={3} />
-                  </span>
-                )}
-                <HandSilhouette hand={h} active={hand === h} />
-                <span
-                  style={{
-                    fontFamily: "'Inter', sans-serif",
-                    fontWeight: 600,
-                    fontSize: 20,
-                    color: hand === h ? P.sage : P.ink2,
-                    textTransform: "capitalize",
-                  }}
-                >
-                  {h} hand
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Q2 */}
         <div
           style={{
             background: P.paper,
@@ -429,7 +350,7 @@ function SetupScreen({
             You can change this anytime.
           </p>
           <PrimaryButton
-            onClick={() => ready && onNext(hand!, difficulty!)}
+            onClick={() => ready && onNext(difficulty!)}
             disabled={!ready}
             fullWidth
             height={64}
@@ -439,25 +360,6 @@ function SetupScreen({
         </div>
       </div>
     </div>
-  );
-}
-
-function HandSilhouette({ hand, active }: { hand: Hand; active: boolean }) {
-  const fill = active ? P.sage300 : P.ink3;
-  return hand === "right" ? (
-    <svg width="52" height="68" viewBox="0 0 52 68" fill="none">
-      <path
-        d="M26 62C10 62 6 50 6 38L6 18C6 15 8 14 10 14C12 14 14 15 14 18L14 30C14 30 13 14 16 12C18 10 22 11 22 14L22 28C22 28 21 12 24 11C26 10 30 11 30 14L30 28C30 28 29 14 32 14C35 14 38 15 38 19L38 30L40 24C41 21 44 21 45 24L46 38C46 50 42 62 26 62Z"
-        fill={fill}
-      />
-    </svg>
-  ) : (
-    <svg width="52" height="68" viewBox="0 0 52 68" fill="none">
-      <path
-        d="M26 62C42 62 46 50 46 38L46 18C46 15 44 14 42 14C40 14 38 15 38 18L38 30C38 30 39 14 36 12C34 10 30 11 30 14L30 28C30 28 31 12 28 11C26 10 22 11 22 14L22 28C22 28 23 14 20 14C17 14 14 15 14 19L14 30L12 24C11 21 8 21 7 24L6 38C6 50 10 62 26 62Z"
-        fill={fill}
-      />
-    </svg>
   );
 }
 
@@ -745,13 +647,17 @@ function ResultsScreen({
           pct={secondaryVal}
         />
 
-        <div style={{ display: "flex", gap: 16 }}>
-          <PrimaryButton onClick={onRetry} fullWidth height={72}>
-            Try again
-          </PrimaryButton>
-          <SecondaryButton onClick={onBack} fullWidth height={72}>
-            Back to exercises
-          </SecondaryButton>
+        <div style={{ display: "flex", gap: 16, width: "100%" }}>
+          <div style={{ flex: "1 1 0", minWidth: 0 }}>
+            <PrimaryButton onClick={onRetry} fullWidth height={72}>
+              Try again
+            </PrimaryButton>
+          </div>
+          <div style={{ flex: "1 1 0", minWidth: 0 }}>
+            <SecondaryButton onClick={onBack} fullWidth height={72}>
+              Back to exercises
+            </SecondaryButton>
+          </div>
         </div>
       </div>
     </div>
@@ -1217,13 +1123,11 @@ function EmptyState({ onStart }: { onStart: () => void }) {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("setup");
-  const [hand, setHand] = useState<Hand | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [exercise, setExercise] = useState<ExerciseType | null>(null);
   const [results, setResults] = useState<ScoreResult | null>(null);
 
-  const handleSetupDone = (h: Hand, d: Difficulty) => {
-    setHand(h);
+  const handleSetupDone = (d: Difficulty) => {
     setDifficulty(d);
     setScreen("exercises");
   };

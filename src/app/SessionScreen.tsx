@@ -500,7 +500,7 @@ export function SessionScreen({
             gap: 16,
           }}
         >
-          <CuePill text="Pinch to draw over the shape, then finish when ready." />
+          <CuePill text="Stay on the green path. If you stop, pinch near the line to continue." />
           <div style={{ display: "flex", gap: 12 }}>
             <SecondaryButton onClick={tracing.clearDrawing} height={64}>
               Clear drawing
