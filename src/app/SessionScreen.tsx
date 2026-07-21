@@ -17,6 +17,7 @@ import { useTracingRuntime } from "./hooks/useTracingRuntime";
 import { useReachRuntime } from "./hooks/useReachRuntime";
 import { useHoldRuntime } from "./hooks/useHoldRuntime";
 import { useMovingTargetRuntime } from "./hooks/useMovingTargetRuntime";
+import { scoreSession, type ScoreResult } from "./scoring";
 
 /* ─── session sub-components ─────────────────────────────────────────────── */
 
@@ -178,7 +179,7 @@ export function SessionScreen({
 }: {
   exercise: ExerciseCategory;
   difficulty: Difficulty;
-  onComplete: (r: { accuracy: number; smoothness: number }) => void;
+  onComplete: (r: ScoreResult) => void;
 }) {
   // The user chose the category and difficulty; the specific exercise (and how
   // its difficulty scales) is rolled here, once. App remounts per session.
@@ -189,6 +190,10 @@ export function SessionScreen({
       difficulty
     )
   );
+
+  // Session start, for the scored duration. Read once, on mount (the session
+  // mounts straight into its active phase), so it doesn't affect any timing.
+  const startedAtRef = useRef(performance.now());
   const reach = plan.category === "reach" ? plan : null;
   const totalTargets = reach ? reach.targets.length : 0;
   const isHold = reach?.variation === "hold";
@@ -251,11 +256,18 @@ export function SessionScreen({
     return () => window.removeEventListener("keydown", kd);
   }, [showExit, tracing.setModeIndicator]);
 
-  const handleSeeResults = () =>
-    onComplete({
-      accuracy: 76 + Math.floor(Math.random() * 14),
-      smoothness: 68 + Math.floor(Math.random() * 14),
+  // Turn the metrics the runtime hooks collected into a real, deterministic
+  // score. Works for a finished exercise or one ended early — an abandoned run
+  // just scores from whatever was collected so far.
+  const computeScore = (): ScoreResult =>
+    scoreSession(plan, {
+      durationMs: performance.now() - startedAtRef.current,
+      tracing: tracing.metrics.current,
+      reach: reachRt.metrics.current,
+      hold: hold.metrics.current,
     });
+
+  const handleSeeResults = () => onComplete(computeScore());
 
   const isComplete = phase === "tracing-complete" || phase === "reaching-complete";
   const currentTarget =
@@ -580,9 +592,7 @@ export function SessionScreen({
       {showExit && (
         <ExitDialog
           onKeepGoing={() => setShowExit(false)}
-          onEnd={() =>
-            onComplete({ accuracy: 65, smoothness: 58 })
-          }
+          onEnd={() => onComplete(computeScore())}
         />
       )}
     </div>

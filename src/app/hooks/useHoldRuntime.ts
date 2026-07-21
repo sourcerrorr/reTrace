@@ -15,18 +15,13 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { isPointOnTarget, type ReachExercise } from "../exercises";
 import type { HandPoint } from "../input";
 import type { SessionPhase } from "../runtime/types";
-
-export interface HoldMetrics {
-  timeInsideMs: number;
-  interruptions: number;
-  completed: boolean;
-}
+import type { HoldMetrics } from "../scoring/types";
 
 export interface HoldRuntime {
   holdProgress: number;
   /** Finger currently inside the target (drives the target glow while holding). */
   insideTarget: boolean;
-  /** Kept for the future scoring engine; not read by rendering today. */
+  /** Stability tallies for the scoring engine; not read by rendering today. */
   metrics: RefObject<HoldMetrics>;
 }
 
@@ -44,6 +39,7 @@ export function useHoldRuntime(opts: {
   const [insideTarget, setInsideTarget] = useState(false);
   const metrics = useRef<HoldMetrics>({
     timeInsideMs: 0,
+    longestHoldMs: 0,
     interruptions: 0,
     completed: false,
   });
@@ -54,7 +50,12 @@ export function useHoldRuntime(opts: {
     if (phase !== "reaching" || !isHold || !reach) return;
     const target = reach.targets[0];
     const holdMs = reach.dwellMs;
-    metrics.current = { timeInsideMs: 0, interruptions: 0, completed: false };
+    metrics.current = {
+      timeInsideMs: 0,
+      longestHoldMs: 0,
+      interruptions: 0,
+      completed: false,
+    };
 
     let raf = 0;
     let last = performance.now();
@@ -74,6 +75,8 @@ export function useHoldRuntime(opts: {
       if (inside) {
         elapsed += dt;
         metrics.current.timeInsideMs += dt;
+        if (elapsed > metrics.current.longestHoldMs)
+          metrics.current.longestHoldMs = elapsed;
         const prog = Math.min(1, elapsed / holdMs);
         if (prog !== shownProgress) { setHoldProgress(prog); shownProgress = prog; }
         if (!shownInside) { setInsideTarget(true); shownInside = true; }

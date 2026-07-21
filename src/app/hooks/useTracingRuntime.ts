@@ -29,6 +29,7 @@ import { shapePoints, type Exercise, type TracingExercise } from "../exercises";
 import { USE_HAND_TRACKING } from "../runtime/config";
 import { idleCursor, moveCursor } from "../runtime/cursor";
 import type { SessionPhase } from "../runtime/types";
+import type { TracingMetrics } from "../scoring/types";
 
 export type ModeIndicator = "Drawing" | "Hovering" | "Paused";
 
@@ -38,6 +39,8 @@ export interface TracingRuntime {
   hasDrawn: boolean;
   /** Reset the current attempt: wipe the stroke, redraw the guide. */
   clearDrawing: () => void;
+  /** Drawn stroke for the scoring engine; not read by rendering. */
+  metrics: RefObject<TracingMetrics>;
 }
 
 /** Paints the guide shape (dashed path + start dot) for the current exercise. */
@@ -82,6 +85,11 @@ export function useTracingRuntime(opts: {
   const isDrawing = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
 
+  // Raw stroke for scoring: the fingertip positions drawn since the last clear,
+  // plus how many separate strokes it took. Collected only — scoreTracing does
+  // the guide comparison later.
+  const metrics = useRef<TracingMetrics>({ points: [], strokeCount: 0 });
+
   // Size canvas once per session
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -118,6 +126,8 @@ export function useTracingRuntime(opts: {
         setHasDrawn(true);
         setModeIndicator("Drawing");
         moveCursor(cursorRef.current, p, true);
+        metrics.current.strokeCount += 1;
+        metrics.current.points.push({ x: p.x, y: p.y });
       },
       // Every frame: move the cursor; only draw while engaged.
       onMove: (p: HandPoint) => {
@@ -134,6 +144,7 @@ export function useTracingRuntime(opts: {
         ctx.lineJoin = "round";
         ctx.stroke();
         lastPos.current = p;
+        metrics.current.points.push({ x: p.x, y: p.y });
       },
       // Pen up (pinch release / mouseup): end the stroke.
       onRelease: () => {
@@ -157,7 +168,9 @@ export function useTracingRuntime(opts: {
     isDrawing.current = false;
     lastPos.current = null;
     setHasDrawn(false);
+    // Score only the attempt that's actually on the canvas.
+    metrics.current = { points: [], strokeCount: 0 };
   }, [plan, canvasRef]);
 
-  return { modeIndicator, setModeIndicator, hasDrawn, clearDrawing };
+  return { modeIndicator, setModeIndicator, hasDrawn, clearDrawing, metrics };
 }

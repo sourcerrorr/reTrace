@@ -17,6 +17,7 @@ import {
   PrivacyChip,
 } from "./components/primitives";
 import { SessionScreen } from "./SessionScreen";
+import type { ScoreResult } from "./scoring";
 
 /* ─── types ───────────────────────────────────────────────────────────────── */
 type Screen = "setup" | "exercises" | "session" | "results" | "progress";
@@ -636,18 +637,34 @@ function ResultsScreen({
   onRetry,
   onBack,
 }: {
-  results: { accuracy: number; smoothness: number };
+  results: ScoreResult;
   exercise: ExerciseType;
   onRetry: () => void;
   onBack: () => void;
 }) {
-  const { accuracy, smoothness } = results;
+  // Same two-card layout as before — only the data source changed. The real
+  // ScoreResult drives both cards; the reach headline keeps its "avg time per
+  // target" reading (a stat), while the bar reflects task completion, not speed.
+  const d = results.details ?? {};
+  const isTracing = exercise === "tracing";
 
-  const accLabel = exercise === "tracing" ? "Accuracy" : "Avg. time per target";
-  const smoothLabel = exercise === "tracing" ? "Smoothness" : "Path efficiency";
-  const accUnit = exercise === "reach" ? "s" : "%";
-  const accDisplay =
-    exercise === "reach" ? (accuracy / 12).toFixed(1) : String(accuracy);
+  const primary = isTracing
+    ? {
+        value: String(Math.round(results.accuracy)),
+        unit: "%",
+        pct: results.accuracy,
+        sentenceVal: results.accuracy,
+      }
+    : {
+        value: (d.avgSeconds ?? 0).toFixed(1),
+        unit: "s",
+        pct: results.completion,
+        sentenceVal: results.completion,
+      };
+  const secondaryVal = isTracing ? d.smoothness ?? 0 : d.efficiency ?? 0;
+
+  const accLabel = isTracing ? "Accuracy" : "Avg. time per target";
+  const smoothLabel = isTracing ? "Smoothness" : "Path efficiency";
 
   const sentence = (val: number, kind: "acc" | "smooth", ex: ExerciseType) => {
     if (kind === "acc" && ex === "tracing") {
@@ -715,17 +732,17 @@ function ResultsScreen({
 
         <ScoreCard
           label={accLabel}
-          value={accDisplay}
-          unit={accUnit}
-          sentence={sentence(accuracy, "acc", exercise)}
-          pct={accuracy}
+          value={primary.value}
+          unit={primary.unit}
+          sentence={sentence(primary.sentenceVal, "acc", exercise)}
+          pct={primary.pct}
         />
         <ScoreCard
           label={smoothLabel}
-          value={String(smoothness)}
+          value={String(Math.round(secondaryVal))}
           unit="%"
-          sentence={sentence(smoothness, "smooth", exercise)}
-          pct={smoothness}
+          sentence={sentence(secondaryVal, "smooth", exercise)}
+          pct={secondaryVal}
         />
 
         <div style={{ display: "flex", gap: 16 }}>
@@ -1203,7 +1220,7 @@ export default function App() {
   const [hand, setHand] = useState<Hand | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const [exercise, setExercise] = useState<ExerciseType | null>(null);
-  const [results, setResults] = useState<{ accuracy: number; smoothness: number } | null>(null);
+  const [results, setResults] = useState<ScoreResult | null>(null);
 
   const handleSetupDone = (h: Hand, d: Difficulty) => {
     setHand(h);
@@ -1216,7 +1233,7 @@ export default function App() {
     setScreen("session");
   };
 
-  const handleSessionComplete = (r: { accuracy: number; smoothness: number }) => {
+  const handleSessionComplete = (r: ScoreResult) => {
     setResults(r);
     setScreen("results");
   };
