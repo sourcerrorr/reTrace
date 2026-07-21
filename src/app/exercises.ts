@@ -159,7 +159,7 @@ function generateTracing(vp: Viewport): TracingExercise {
   return {
     id: nextId("trace"),
     category: "tracing",
-    instruction: "Trace this shape — start at the green dot.",
+    instruction: "Start at the green dot, then stay on the path.",
     shape,
     size,
     center: {
