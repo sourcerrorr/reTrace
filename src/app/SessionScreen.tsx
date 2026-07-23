@@ -3,11 +3,15 @@ import { X } from "lucide-react";
 import {
   targetPositionAt,
   type Exercise,
+  type InstructionSpec,
 } from "./exercises";
 import type { HandPoint } from "./input";
 import { HandCamera } from "./components/HandCamera";
 import { PrimaryButton, SecondaryButton, PrivacyChip } from "./components/primitives";
 import { P } from "./theme";
+import { useLanguage } from "./i18n/useLanguage";
+import { LanguageSwitch } from "./i18n/LanguageSwitch";
+import type { Translations } from "./i18n/translations";
 import { USE_HAND_TRACKING } from "./runtime/config";
 import type { SessionPhase } from "./runtime/types";
 import { useTracingRuntime } from "./hooks/useTracingRuntime";
@@ -18,11 +22,39 @@ import { scoreSession, type ScoreResult } from "./scoring";
 
 /* ─── session sub-components ─────────────────────────────────────────────── */
 
-function ModePill({ mode }: { mode: "Drawing" | "Hovering" | "Paused" }) {
-  const dot: Record<string, string> = {
+/** Resolve an exercise's language-agnostic cue descriptor to translated text. */
+function instructionText(t: Translations, spec: InstructionSpec): string {
+  switch (spec.key) {
+    case "tracing":
+      return t.instructions.tracing;
+    case "lateral":
+      return spec.side === "left"
+        ? t.instructions.lateralLeft
+        : t.instructions.lateralRight;
+    case "upward":
+      return t.instructions.upward;
+    case "moving":
+      return t.instructions.moving;
+    case "hold":
+      return t.instructions.hold(spec.seconds);
+    case "scatter":
+      return t.instructions.scatter;
+  }
+}
+
+type ModeToken = "Drawing" | "Hovering" | "Paused";
+
+function ModePill({ mode }: { mode: ModeToken }) {
+  const { t } = useLanguage();
+  const dot: Record<ModeToken, string> = {
     Drawing: P.sage,
     Hovering: P.amber,
     Paused: P.ink3,
+  };
+  const label: Record<ModeToken, string> = {
+    Drawing: t.session.modeDrawing,
+    Hovering: t.session.modeHovering,
+    Paused: t.session.modePaused,
   };
   return (
     <div
@@ -51,12 +83,13 @@ function ModePill({ mode }: { mode: "Drawing" | "Hovering" | "Paused" }) {
           flexShrink: 0,
         }}
       />
-      {mode}
+      {label[mode]}
     </div>
   );
 }
 
 function ProgressPill({ index, total }: { index: number; total: number }) {
+  const { t } = useLanguage();
   return (
     <div
       style={{
@@ -74,7 +107,7 @@ function ProgressPill({ index, total }: { index: number; total: number }) {
         fontWeight: 600,
       }}
     >
-      <span>{`Exercise ${index + 1} / ${total}`}</span>
+      <span>{t.session.exerciseProgress(index + 1, total)}</span>
       <span style={{ display: "flex", gap: 5 }}>
         {Array.from({ length: total }, (_, i) => (
           <span
@@ -125,6 +158,7 @@ function ExitDialog({
   onKeepGoing: () => void;
   onEnd: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div
       style={{
@@ -171,12 +205,12 @@ function ExitDialog({
             lineHeight: 1.3,
           }}
         >
-          End this exercise? Your progress is saved.
+          {t.session.exitTitle}
         </p>
         <div className="exit-dialog-actions">
           <div className="exit-dialog-action">
             <PrimaryButton onClick={onKeepGoing} fullWidth height={64}>
-              Keep going
+              {t.session.keepGoing}
             </PrimaryButton>
           </div>
           <div className="exit-dialog-action">
@@ -196,7 +230,7 @@ function ExitDialog({
                 cursor: "pointer",
               }}
             >
-              End now
+              {t.session.endNow}
             </button>
           </div>
         </div>
@@ -228,6 +262,8 @@ export function SessionScreen({
   /** User bailed out of the whole session; end it now with this partial result. */
   onExit: (r: ScoreResult) => void;
 }) {
+  const { t } = useLanguage();
+
   // Session start, for the scored duration. Read once, on mount (the session
   // mounts straight into its active phase), so it doesn't affect any timing.
   const startedAtRef = useRef(performance.now());
@@ -482,7 +518,17 @@ export function SessionScreen({
       {/* Top-left mode indicator */}
       {(phase === "tracing" || phase === "reaching") && (
         <div style={{ position: "absolute", top: 24, left: 24 }}>
-          <ModePill mode={phase === "reaching" ? "Hovering" : modeIndicator} />
+          {/* "Hovering" (finger-following) reads right while reaching; during
+              tracing the pen-up state is shown as the neutral "Paused" label. */}
+          <ModePill
+            mode={
+              phase === "reaching"
+                ? "Hovering"
+                : modeIndicator === "Hovering"
+                ? "Paused"
+                : modeIndicator
+            }
+          />
         </div>
       )}
 
@@ -502,7 +548,7 @@ export function SessionScreen({
       {/* Top-right exit */}
       <button
         onClick={() => setShowExit(true)}
-        aria-label="Exit exercise"
+        aria-label={t.session.exitAria}
         style={{
           position: "absolute",
           top: 24,
@@ -534,7 +580,7 @@ export function SessionScreen({
             transform: "translateX(-50%)",
           }}
         >
-          <CuePill text={plan.instruction} />
+          <CuePill text={instructionText(t, plan.instruction)} />
         </div>
       )}
       {phase === "tracing" && hasDrawn && (
@@ -550,13 +596,13 @@ export function SessionScreen({
             gap: 16,
           }}
         >
-          <CuePill text="Stay on the green path. If you stop, pinch near the line to continue." />
+          <CuePill text={t.session.tracingHint} />
           <div style={{ display: "flex", gap: 12 }}>
             <SecondaryButton onClick={tracing.clearDrawing} height={64}>
-              Clear drawing
+              {t.session.clearDrawing}
             </SecondaryButton>
             <PrimaryButton onClick={() => setPhase("tracing-complete")} height={64}>
-              Finish tracing
+              {t.session.finishTracing}
             </PrimaryButton>
           </div>
         </div>
@@ -597,9 +643,9 @@ export function SessionScreen({
               color: "rgba(255,255,255,0.65)",
             }}
           >
-            {hitsCount} / {totalTargets}
+            {t.session.reachProgress(hitsCount, totalTargets)}
           </span>
-          <CuePill text={plan.instruction} />
+          <CuePill text={instructionText(t, plan.instruction)} />
         </div>
       )}
 
@@ -618,23 +664,33 @@ export function SessionScreen({
             backdropFilter: "blur(6px)",
           }}
         >
-          <CuePill
-            text={
-              phase !== "reaching-complete"
-                ? "Done — let's see how you did."
-                : totalTargets > 1
-                ? `You reached all ${totalTargets} — nicely done.`
-                : "Nicely done."
-            }
-          />
+          {phase === "reaching-complete" && (
+            <CuePill
+              text={
+                totalTargets > 1
+                  ? t.session.reachedAll(totalTargets)
+                  : t.session.nicelyDone
+              }
+            />
+          )}
           <PrimaryButton onClick={handleSeeResults} height={72}>
-            {isLastExercise ? "See results" : "Next exercise"}
+            {isLastExercise ? t.session.seeResults : t.session.nextExercise}
           </PrimaryButton>
         </div>
       )}
 
-      {/* Bottom-left privacy */}
-      <div style={{ position: "absolute", bottom: 24, left: 24 }}>
+      {/* Bottom-left: language switch + privacy, so the switch is reachable here too */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 24,
+          left: 24,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <LanguageSwitch dark />
         <PrivacyChip dark />
       </div>
 
