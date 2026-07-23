@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import {
-  generateExercise,
   targetPositionAt,
-  type Difficulty,
   type Exercise,
-  type ExerciseCategory,
 } from "./exercises";
 import type { HandPoint } from "./input";
 import { HandCamera } from "./components/HandCamera";
@@ -55,6 +52,44 @@ function ModePill({ mode }: { mode: "Drawing" | "Hovering" | "Paused" }) {
         }}
       />
       {mode}
+    </div>
+  );
+}
+
+function ProgressPill({ index, total }: { index: number; total: number }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "0 20px",
+        height: 44,
+        borderRadius: 9999,
+        background: "rgba(26,26,26,0.72)",
+        backdropFilter: "blur(12px)",
+        color: "#fff",
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 15,
+        fontWeight: 600,
+      }}
+    >
+      <span>{`Exercise ${index + 1} / ${total}`}</span>
+      <span style={{ display: "flex", gap: 5 }}>
+        {Array.from({ length: total }, (_, i) => (
+          <span
+            key={i}
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background:
+                i < index ? P.sage : i === index ? "#fff" : "rgba(255,255,255,0.28)",
+              transition: "background 200ms ease-out",
+            }}
+          />
+        ))}
+      </span>
     </div>
   );
 }
@@ -173,24 +208,26 @@ function ExitDialog({
 /* ─── screen 3: session ──────────────────────────────────────────────────── */
 
 export function SessionScreen({
-  exercise: category,
-  difficulty,
+  plan,
+  exerciseIndex,
+  exerciseTotal,
+  isLastExercise,
   onComplete,
+  onExit,
 }: {
-  exercise: ExerciseCategory;
-  difficulty: Difficulty;
+  /** The concrete exercise for this step of the session, rolled by App. */
+  plan: Exercise;
+  /** 0-based position of this exercise within the session. */
+  exerciseIndex: number;
+  /** Total exercises in the session (for the "Exercise 2 / 5" indicator). */
+  exerciseTotal: number;
+  /** Last exercise in the session — controls the finish-button label. */
+  isLastExercise: boolean;
+  /** This exercise finished (normally or ended early); advance the session. */
   onComplete: (r: ScoreResult) => void;
+  /** User bailed out of the whole session; end it now with this partial result. */
+  onExit: (r: ScoreResult) => void;
 }) {
-  // The user chose the category and difficulty; the specific exercise (and how
-  // its difficulty scales) is rolled here, once. App remounts per session.
-  const [plan] = useState<Exercise>(() =>
-    generateExercise(
-      category,
-      { width: window.innerWidth, height: window.innerHeight },
-      difficulty
-    )
-  );
-
   // Session start, for the scored duration. Read once, on mount (the session
   // mounts straight into its active phase), so it doesn't affect any timing.
   const startedAtRef = useRef(performance.now());
@@ -449,6 +486,19 @@ export function SessionScreen({
         </div>
       )}
 
+      {/* Top-center session progress: which exercise of the session this is. */}
+      <div
+        style={{
+          position: "absolute",
+          top: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 6,
+        }}
+      >
+        <ProgressPill index={exerciseIndex} total={exerciseTotal} />
+      </div>
+
       {/* Top-right exit */}
       <button
         onClick={() => setShowExit(true)}
@@ -578,7 +628,7 @@ export function SessionScreen({
             }
           />
           <PrimaryButton onClick={handleSeeResults} height={72}>
-            See results
+            {isLastExercise ? "See results" : "Next exercise"}
           </PrimaryButton>
         </div>
       )}
@@ -592,7 +642,7 @@ export function SessionScreen({
       {showExit && (
         <ExitDialog
           onKeepGoing={() => setShowExit(false)}
-          onEnd={() => onComplete(computeScore())}
+          onEnd={() => onExit(computeScore())}
         />
       )}
     </div>

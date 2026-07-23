@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Activity, TrendingUp, Settings, Check } from "lucide-react";
+import { Activity, TrendingUp, Check } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -9,7 +9,13 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { type Difficulty, type ExerciseCategory } from "./exercises";
+import {
+  generateSessionPlan,
+  SESSION_LENGTH,
+  type Difficulty,
+  type Exercise,
+  type ExerciseCategory,
+} from "./exercises";
 import { P } from "./theme";
 import {
   PrimaryButton,
@@ -20,7 +26,7 @@ import { SessionScreen } from "./SessionScreen";
 import type { ScoreResult } from "./scoring";
 
 /* ─── types ───────────────────────────────────────────────────────────────── */
-type Screen = "setup" | "exercises" | "session" | "results" | "progress";
+type Screen = "exercises" | "session" | "results" | "progress";
 type ExerciseType = ExerciseCategory;
 
 /* ─── mock data ──────────────────────────────────────────────────────────── */
@@ -65,10 +71,8 @@ const GlobalStyle = () => (
 /* ─── nav rail ────────────────────────────────────────────────────────────── */
 
 const NAV = [
-  { id: "setup" as Screen,     label: "Home",      Icon: Home },
   { id: "exercises" as Screen, label: "Exercises", Icon: Activity },
   { id: "progress" as Screen,  label: "Progress",  Icon: TrendingUp },
-  { id: "setup" as Screen,     label: "Settings",  Icon: Settings },
 ] as const;
 
 function NavRail({
@@ -107,7 +111,7 @@ function NavRail({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 12px", flex: 1 }}>
         {NAV.map(({ id, label, Icon }) => {
-          const active = current === id && label !== "Settings";
+          const active = current === id;
           return (
             <button
               key={label}
@@ -150,7 +154,7 @@ function NavRail({
 
 function DevNav({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   const [open, setOpen] = useState(false);
-  const screens: Screen[] = ["setup", "exercises", "session", "results", "progress"];
+  const screens: Screen[] = ["exercises", "session", "results", "progress"];
   return (
     <div
       style={{
@@ -221,15 +225,21 @@ function DevNav({ onNavigate }: { onNavigate: (s: Screen) => void }) {
   );
 }
 
-/* ─── screen 1: setup ─────────────────────────────────────────────────────── */
+/* ─── screen 1: exercise + difficulty select ─────────────────────────────── */
+/**
+ * The single entry point for starting a session. The old separate Setup page is
+ * gone — exercise type and difficulty now both live here, and "Start session"
+ * rolls a full plan of multiple exercises of the chosen type (see App).
+ */
 
-function SetupScreen({
-  onNext,
+function ExercisesScreen({
+  onStart,
 }: {
-  onNext: (d: Difficulty) => void;
+  onStart: (category: ExerciseType, difficulty: Difficulty) => void;
 }) {
+  const [type, setType] = useState<ExerciseType | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
-  const ready = difficulty !== null;
+  const ready = type !== null && difficulty !== null;
 
   const difficulties: { id: Difficulty; title: string; desc: string }[] = [
     { id: "easy",   title: "Easy",   desc: "Larger targets, more time." },
@@ -242,14 +252,42 @@ function SetupScreen({
       style={{
         flex: 1,
         background: P.bone,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         padding: "40px 64px",
-        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      <div style={{ width: "100%", maxWidth: 640, display: "flex", flexDirection: "column", gap: 32 }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 32 }}>
+        <p
+          style={{
+            fontFamily: "'Inter', sans-serif",
+            fontSize: 18,
+            color: P.ink3,
+            fontWeight: 500,
+          }}
+        >
+          Choose an exercise and how challenging it should feel.
+        </p>
+
+        {/* Exercise type */}
+        <div style={{ display: "flex", gap: 32 }}>
+          <ExerciseCard
+            title="Tracing"
+            description="Follow shapes in the air. Good for smooth, controlled movement."
+            preview={<TracingPreview />}
+            selected={type === "tracing"}
+            onSelect={() => setType("tracing")}
+          />
+          <ExerciseCard
+            title="Reach to target"
+            description="Touch circles as they appear. Good for range and speed."
+            preview={<ReachPreview />}
+            selected={type === "reach"}
+            onSelect={() => setType("reach")}
+          />
+        </div>
+
+        {/* Difficulty */}
         <div
           style={{
             background: P.paper,
@@ -338,6 +376,7 @@ function SetupScreen({
           </div>
         </div>
 
+        {/* Start */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <p
             style={{
@@ -347,76 +386,17 @@ function SetupScreen({
               color: P.ink3,
             }}
           >
-            You can change this anytime.
+            A session is {SESSION_LENGTH} exercises of your chosen type.
           </p>
           <PrimaryButton
-            onClick={() => ready && onNext(difficulty!)}
+            onClick={() => ready && onStart(type!, difficulty!)}
             disabled={!ready}
             fullWidth
             height={64}
           >
-            Continue →
+            Start session →
           </PrimaryButton>
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── screen 2: exercise select ──────────────────────────────────────────── */
-
-function ExercisesScreen({ onStart }: { onStart: (e: ExerciseType) => void }) {
-  return (
-    <div
-      style={{
-        flex: 1,
-        background: P.bone,
-        padding: "40px 64px",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <div style={{ maxWidth: 1120, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", flex: 1 }}>
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: 18,
-            color: P.ink3,
-            fontWeight: 500,
-            marginBottom: 32,
-          }}
-        >
-          Choose today's exercise.
-        </p>
-
-        <div style={{ display: "flex", gap: 32, flex: 1 }}>
-          <ExerciseCard
-            title="Tracing"
-            description="Follow shapes in the air. Good for smooth, controlled movement."
-            buttonLabel="Start tracing"
-            preview={<TracingPreview />}
-            onClick={() => onStart("tracing")}
-          />
-          <ExerciseCard
-            title="Reach to target"
-            description="Touch circles as they appear. Good for range and speed."
-            buttonLabel="Start reaching"
-            preview={<ReachPreview />}
-            onClick={() => onStart("reach")}
-          />
-        </div>
-
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: 16,
-            color: P.ink3,
-            textAlign: "center",
-            marginTop: 24,
-          }}
-        >
-          Recommended: Tracing on Mondays and Thursdays.
-        </p>
       </div>
     </div>
   );
@@ -425,33 +405,58 @@ function ExercisesScreen({ onStart }: { onStart: (e: ExerciseType) => void }) {
 function ExerciseCard({
   title,
   description,
-  buttonLabel,
   preview,
-  onClick,
+  selected,
+  onSelect,
 }: {
   title: string;
   description: string;
-  buttonLabel: string;
   preview: React.ReactNode;
-  onClick: () => void;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <div
+    <button
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={onSelect}
+      aria-pressed={selected}
       style={{
+        position: "relative",
         flex: 1,
+        textAlign: "left",
+        padding: 0,
+        cursor: "pointer",
         background: P.paper,
-        border: `1px solid ${P.border}`,
+        border: selected ? `3px solid ${P.sage}` : `1px solid ${P.border}`,
         borderRadius: 20,
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         boxShadow: hovered ? "0 12px 32px rgba(26,26,26,.06)" : "none",
-        transition: "box-shadow 220ms ease-out",
+        transition: "box-shadow 220ms ease-out, border-color 160ms ease-out",
       }}
     >
+      {selected && (
+        <span
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            zIndex: 1,
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: P.sage,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Check size={16} color="#fff" strokeWidth={3} />
+        </span>
+      )}
       <div
         style={{
           height: 260,
@@ -496,11 +501,8 @@ function ExerciseCard({
         >
           {description}
         </p>
-        <PrimaryButton onClick={onClick} fullWidth height={64}>
-          {buttonLabel}
-        </PrimaryButton>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -533,37 +535,43 @@ function ReachPreview() {
 
 /* ─── screen 4: results ──────────────────────────────────────────────────── */
 
+const mean = (xs: number[]) =>
+  xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+
 function ResultsScreen({
   results,
   exercise,
   onRetry,
   onBack,
 }: {
-  results: ScoreResult;
+  results: ScoreResult[];
   exercise: ExerciseType;
   onRetry: () => void;
   onBack: () => void;
 }) {
-  // Same two-card layout as before — only the data source changed. The real
-  // ScoreResult drives both cards; the reach headline keeps its "avg time per
-  // target" reading (a stat), while the bar reflects task completion, not speed.
-  const d = results.details ?? {};
+  // A session is now several exercises of one type; the two summary cards show
+  // the session *average* of the same dimensions each individual exercise
+  // scored. Individual results are kept and listed below the summary.
   const isTracing = exercise === "tracing";
+  const detail = (k: string) => mean(results.map((r) => r.details?.[k] ?? 0));
+
+  const avgAccuracy = mean(results.map((r) => r.accuracy));
+  const avgCompletion = mean(results.map((r) => r.completion));
 
   const primary = isTracing
     ? {
-        value: String(Math.round(results.accuracy)),
+        value: String(Math.round(avgAccuracy)),
         unit: "%",
-        pct: results.accuracy,
-        sentenceVal: results.accuracy,
+        pct: avgAccuracy,
+        sentenceVal: avgAccuracy,
       }
     : {
-        value: (d.avgSeconds ?? 0).toFixed(1),
+        value: detail("avgSeconds").toFixed(1),
         unit: "s",
-        pct: results.completion,
-        sentenceVal: results.completion,
+        pct: avgCompletion,
+        sentenceVal: avgCompletion,
       };
-  const secondaryVal = isTracing ? d.smoothness ?? 0 : d.efficiency ?? 0;
+  const secondaryVal = isTracing ? detail("smoothness") : detail("efficiency");
 
   const accLabel = isTracing ? "Accuracy" : "Avg. time per target";
   const smoothLabel = isTracing ? "Smoothness" : "Path efficiency";
@@ -616,7 +624,8 @@ function ResultsScreen({
               marginBottom: 8,
             }}
           >
-            Session complete
+            Session complete · {results.length}{" "}
+            {results.length === 1 ? "exercise" : "exercises"}
           </p>
           <h1
             style={{
@@ -646,6 +655,64 @@ function ResultsScreen({
           sentence={sentence(secondaryVal, "smooth", exercise)}
           pct={secondaryVal}
         />
+
+        {/* Per-exercise breakdown — the individual results behind the average. */}
+        {results.length > 1 && (
+          <div
+            style={{
+              background: P.paper,
+              border: `1px solid ${P.border}`,
+              borderRadius: 16,
+              padding: "24px 32px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            <p
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 13,
+                color: P.ink3,
+                marginBottom: 12,
+              }}
+            >
+              This session
+            </p>
+            {results.map((r, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 0",
+                  borderTop: i === 0 ? "none" : `1px solid ${P.border}`,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 17,
+                    color: P.ink2,
+                  }}
+                >
+                  Exercise {i + 1}
+                </span>
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 15,
+                    color: P.sage,
+                    fontWeight: 600,
+                  }}
+                >
+                  {Math.round(r.overall)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: 16, width: "100%" }}>
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
@@ -1122,28 +1189,48 @@ function EmptyState({ onStart }: { onStart: () => void }) {
 /* ─── app root ────────────────────────────────────────────────────────────── */
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>("setup");
-  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
-  const [exercise, setExercise] = useState<ExerciseType | null>(null);
-  const [results, setResults] = useState<ScoreResult | null>(null);
+  const [screen, setScreen] = useState<Screen>("exercises");
+  const [category, setCategory] = useState<ExerciseType | null>(null);
+  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
 
-  const handleSetupDone = (d: Difficulty) => {
-    setDifficulty(d);
-    setScreen("exercises");
-  };
+  // A session is a plan of several same-type exercises. We walk `plan` by
+  // `index`, collecting one ScoreResult each, and only show Results at the end.
+  const [plan, setPlan] = useState<Exercise[]>([]);
+  const [index, setIndex] = useState(0);
+  const [results, setResults] = useState<ScoreResult[]>([]);
+  // Bumped per session so SessionScreen's key changes even on a retry of the
+  // same type/index, forcing a fresh remount of the runtime hooks.
+  const [runId, setRunId] = useState(0);
 
-  const handleStartExercise = (e: ExerciseType) => {
-    setExercise(e);
+  const startSession = (cat: ExerciseType, diff: Difficulty) => {
+    setCategory(cat);
+    setDifficulty(diff);
+    setPlan(
+      generateSessionPlan(
+        cat,
+        { width: window.innerWidth, height: window.innerHeight },
+        diff
+      )
+    );
+    setIndex(0);
+    setResults([]);
+    setRunId((n) => n + 1);
     setScreen("session");
   };
 
-  const handleSessionComplete = (r: ScoreResult) => {
-    setResults(r);
-    setScreen("results");
+  // Record this exercise's result, then either advance to the next exercise or,
+  // if it was the last (or the user ended the session early), show Results.
+  const finishExercise = (r: ScoreResult, endSession: boolean) => {
+    setResults((prev) => [...prev, r]);
+    if (!endSession && index + 1 < plan.length) {
+      setIndex((i) => i + 1);
+    } else {
+      setScreen("results");
+    }
   };
 
   const handleRetry = () => {
-    setScreen("session");
+    if (category) startSession(category, difficulty);
   };
 
   const isSession = screen === "session";
@@ -1164,24 +1251,24 @@ export default function App() {
         )}
 
         <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          {screen === "setup" && (
-            <SetupScreen onNext={handleSetupDone} />
-          )}
           {screen === "exercises" && (
-            <ExercisesScreen onStart={handleStartExercise} />
+            <ExercisesScreen onStart={startSession} />
           )}
-          {screen === "session" && exercise && (
+          {screen === "session" && plan[index] && (
             <SessionScreen
-              key={`${exercise}-${Date.now()}`}
-              exercise={exercise}
-              difficulty={difficulty ?? "medium"}
-              onComplete={handleSessionComplete}
+              key={`${runId}-${index}`}
+              plan={plan[index]}
+              exerciseIndex={index}
+              exerciseTotal={plan.length}
+              isLastExercise={index === plan.length - 1}
+              onComplete={(r) => finishExercise(r, false)}
+              onExit={(r) => finishExercise(r, true)}
             />
           )}
-          {screen === "results" && results && exercise && (
+          {screen === "results" && category && results.length > 0 && (
             <ResultsScreen
               results={results}
-              exercise={exercise}
+              exercise={category}
               onRetry={handleRetry}
               onBack={() => setScreen("exercises")}
             />
@@ -1196,3 +1283,4 @@ export default function App() {
     </>
   );
 }
+
