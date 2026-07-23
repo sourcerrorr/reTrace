@@ -12,21 +12,34 @@
  *
  * Everything tunable lives in TUNING; the weights are accuracy-led on purpose —
  * this is rehab practice, not a speed run.
+ *
+ * ── Coupling with the tracing runtime ─────────────────────────────────────────
+ * `useTracingRuntime` gates ink to a guide corridor: it only records a fingertip
+ * sample into `metrics.points` while the tip is within PATH_CORRIDOR_PX (≈52) of
+ * the guide, starts drawing from the start marker, and drops long jump chords.
+ * So the scorer only ever sees *valid in-corridor drawing* — off-path scribbling
+ * never reaches it. That is why this module no longer carries an "overdraw"
+ * penalty: there is nothing off-path left to penalise, and a term that fired only
+ * on the corridor rim would score noise, not behaviour.
+ *
+ * INVARIANT: keep `tolerancePx` and `coveragePx` ≤ the runtime's corridor width.
+ * If PATH_CORRIDOR_PX changes significantly, revisit these constants (and this
+ * whole scorer) — a wider corridor admits looser drawing that this scorer would
+ * otherwise still reward as "on the line".
  */
 
 import { shapePoints, type Point, type TracingExercise } from "../exercises";
 import type { ScoreResult, TracingMetrics } from "./types";
-import { clamp, distance, ratio, weighted } from "./util";
+import { clamp, distance, weighted } from "./util";
 
 const TUNING = {
   /** Max distance (px) a drawn point may sit from the guide and still count as
-   *  "on the line". ≈ guide half-width (3) + pen half-width (5) + hand jitter. */
+   *  "on the line". ≈ guide half-width (3) + pen half-width (5) + hand jitter.
+   *  Must stay ≤ the runtime's PATH_CORRIDOR_PX so adherence still discriminates
+   *  inside the corridor rather than flattening to full marks everywhere. */
   tolerancePx: 44,
   /** A guide sample is "covered" if some drawn point lands within this band. */
   coveragePx: 48,
-  /** How hard scribbling outside the guide pulls accuracy down (0–100 points at
-   *  full overdraw). Kept modest — a little overshoot is normal. */
-  overdrawWeight: 40,
   /** Segment length variability that maps to zero smoothness (coefficient of
    *  variation). Below it, smoothness scales linearly toward 100. */
   smoothnessCvCeil: 1,
@@ -80,13 +93,21 @@ export function scoreTracing(
       accuracy: 0,
       completion: 0,
       durationMs,
-      details: { smoothness: 0, coverage: 0, deviationPx: 0, overdraw: 0 },
+      details: { smoothness: 0, coverage: 0, deviationPx: 0 },
     };
   }
 
   // Coverage + positional accuracy, walking the guide: each guide sample looks
   // for its nearest drawn point. Far/uncovered samples score low, so a tidy but
   // partial trace can't pass as accurate.
+  //
+  // With the runtime's corridor gating (see the coupling note up top), every
+  // drawn point is already in-corridor, so this guide-walk carries accuracy on
+  // its own — there is no off-path scribbling left for a separate overdraw term
+  // to catch. Adherence *within* the corridor still discriminates: a drawn line
+  // that hugs the far edge (near tolerancePx away) lowers each guide sample's
+  // closeness, and coveragePx keeps corridor-edge riding from counting as
+  // "reached". Wobble that still passes near the guide is caught by smoothness.
   let closenessSum = 0;
   let deviationSum = 0;
   let covered = 0;
@@ -96,18 +117,9 @@ export function scoreTracing(
     deviationSum += d;
     if (d <= TUNING.coveragePx) covered += 1;
   }
-  const baseAccuracy = (closenessSum / guide.length) * 100;
+  const accuracy = clamp((closenessSum / guide.length) * 100);
   const completion = (covered / guide.length) * 100;
   const meanDeviation = deviationSum / guide.length;
-
-  // Overdraw: drawn points that stray well outside the guide (extra scribbles),
-  // which the guide-walk above can't see. A fraction of them dents accuracy.
-  let outside = 0;
-  for (const p of drawn) {
-    if (nearest(p, guide) > TUNING.tolerancePx) outside += 1;
-  }
-  const overdrawFrac = ratio(outside, drawn.length);
-  const accuracy = clamp(baseAccuracy - overdrawFrac * TUNING.overdrawWeight);
 
   const smoothness = smoothnessScore(drawn);
 
@@ -126,7 +138,6 @@ export function scoreTracing(
       smoothness: Math.round(smoothness),
       coverage: Math.round(completion),
       deviationPx: Math.round(meanDeviation),
-      overdraw: Math.round(overdrawFrac * 100),
     },
   };
 }
