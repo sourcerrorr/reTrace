@@ -57,6 +57,11 @@ export const en = {
     chooseToday: "Choose today's exercise.",
     tracingStart: "Start tracing",
     reachStart: "Start reaching",
+    chooseHint: "Choose an exercise and how challenging it should feel.",
+    tracingDesc: "",
+    reachDesc: "",
+    sessionLength: (n: number) => `A session is ${n} exercises of your chosen type.`,
+    startSession: "Start session →",
   },
 
   results: {
@@ -65,6 +70,9 @@ export const en = {
     avgTimePerTarget: "Avg. time per target",
     pathEfficiency: "Path efficiency",
     backToExercises: "Back to exercises",
+    thisSession: "This session",
+    sessionCount: (n: number) => `${n} ${n === 1 ? "exercise" : "exercises"}`,
+    exerciseLabel: (n: number) => `Exercise ${n}`,
     // Feedback sentences, keyed by exercise + metric + score tier.
     accTracingHigh: "Your line stayed close to the shape most of the way. Nice control.",
     accTracingMid: "You followed the shape well. A few small drifts — that's normal.",
@@ -98,6 +106,8 @@ export const en = {
     reachedAll: (n: number) => `You reached all ${n} — nicely done.`,
     nicelyDone: "Nicely done.",
     seeResults: "See results",
+    nextExercise: "Next exercise",
+    exerciseProgress: (index: number, total: number) => `Exercise ${index} / ${total}`,
     exitAria: "Exit exercise",
   },
 
@@ -182,6 +192,11 @@ export const ka: Translations = {
     chooseToday: "აირჩიეთ დღევანდელი ვარჯიში.",
     tracingStart: "ხაზვის დაწყება",
     reachStart: "მიწვდომის დაწყება",
+    chooseHint: "აირჩიეთ ვარჯიში და მისი სირთულე.",
+    tracingDesc: "",
+    reachDesc: "",
+    sessionLength: (n: number) => `სესია შედგება არჩეული ტიპის ${n} ვარჯიშისგან.`,
+    startSession: "სესიის დაწყება →",
   },
 
   results: {
@@ -190,6 +205,9 @@ export const ka: Translations = {
     avgTimePerTarget: "საშ. დრო თითო სამიზნეზე",
     pathEfficiency: "ტრაექტორიის ეფექტურობა",
     backToExercises: "ვარჯიშებზე დაბრუნება",
+    thisSession: "ეს სესია",
+    sessionCount: (n: number) => `${n} ვარჯიში`,
+    exerciseLabel: (n: number) => `ვარჯიში ${n}`,
     accTracingHigh: "თქვენი ხაზი უმეტესწილად ფიგურასთან ახლოს რჩებოდა. კარგი კონტროლი.",
     accTracingMid: "კარგად მიჰყევით ფიგურას. რამდენიმე მცირე გადახრა — ეს ნორმალურია.",
     accReachHigh: "სამიზნეებს სწრაფად და ზუსტად წვდებოდით. შესანიშნავი დიაპაზონი.",
@@ -222,6 +240,8 @@ export const ka: Translations = {
     reachedAll: (n: number) => `${n} სამიზნე ✓`,
     nicelyDone: "ყოჩაღ.",
     seeResults: "შედეგების ნახვა",
+    nextExercise: "შემდეგი ვარჯიში",
+    exerciseProgress: (index: number, total: number) => `ვარჯიში ${index} / ${total}`,
     exitAria: "ვარჯიშიდან გასვლა",
   },
 
