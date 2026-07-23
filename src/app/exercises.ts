@@ -103,6 +103,16 @@ const rand = (min: number, max: number) => min + Math.random() * (max - min);
 const randInt = (min: number, max: number) => Math.floor(rand(min, max + 1));
 const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(Math.random() * xs.length)];
 
+/** Fisher–Yates shuffle into a new array (leaves the input untouched). */
+function shuffle<T>(xs: readonly T[]): T[] {
+  const out = xs.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 /** Random point in [lo, hi], collapsing to the midpoint when the range inverts
  *  on small viewports (rand() would otherwise return an out-of-bounds value). */
 const between = (lo: number, hi: number) => (hi <= lo ? (lo + hi) / 2 : rand(lo, hi));
@@ -146,8 +156,7 @@ const MIN_TARGET_RADIUS = 40; // keep targets catchable under fingertip jitter
 
 /* ─── tracing ─────────────────────────────────────────────────────────────── */
 
-function generateTracing(vp: Viewport): TracingExercise {
-  const shape = pick(TRACE_SHAPES);
+function generateTracing(vp: Viewport, shape: TraceShape = pick(TRACE_SHAPES)): TracingExercise {
   const span = Math.min(vp.width, vp.height);
   const size = rand(span * 0.16, span * 0.3);
 
@@ -195,9 +204,12 @@ function scaledCount(loBase: number, hiBase: number, scale: number): number {
   return randInt(lo, hi);
 }
 
-function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
+function generateReach(
+  vp: Viewport,
+  difficulty: Difficulty,
+  variation: ReachVariation = pick(REACH_VARIATIONS)
+): ReachExercise {
   const t = DIFFICULTY_TUNING[difficulty];
-  const variation = pick(REACH_VARIATIONS);
 
   const radius = clamp(BASE_RADIUS * t.radiusScale, MIN_TARGET_RADIUS, 120);
   const dwellMs = Math.round(BASE_DWELL_MS * t.dwellScale);
@@ -325,6 +337,32 @@ export function generateExercise(
   return category === "tracing"
     ? generateTracing(vp)
     : generateReach(vp, difficulty);
+}
+
+/** How many exercises make up one session. */
+export const SESSION_LENGTH = 5;
+
+/**
+ * Rolls the full set of exercises for a session. Every exercise shares the
+ * category the user chose — a session never mixes tracing and reaching.
+ *
+ * Tracing sessions draw distinct shapes; reaching sessions rotate distinct
+ * variations. Both draw from a shuffled pool so a session feels varied without
+ * repeating within itself (pools have ≥ SESSION_LENGTH entries, so no repeats).
+ */
+export function generateSessionPlan(
+  category: ExerciseCategory,
+  vp: Viewport,
+  difficulty: Difficulty
+): Exercise[] {
+  if (category === "tracing") {
+    return shuffle(TRACE_SHAPES)
+      .slice(0, SESSION_LENGTH)
+      .map((shape) => generateTracing(vp, shape));
+  }
+  return shuffle(REACH_VARIATIONS)
+    .slice(0, SESSION_LENGTH)
+    .map((variation) => generateReach(vp, difficulty, variation));
 }
 
 /* ─── geometry ────────────────────────────────────────────────────────────── */
