@@ -109,7 +109,7 @@ function NavRail({
         flexShrink: 0,
       }}
     >
-      <div style={{ padding: "0 24px 40px" }}>
+      <div style={{ padding: "0 24px 24px" }}>
         <span
           style={{
             fontFamily: "'Fraunces', serif",
@@ -121,6 +121,12 @@ function NavRail({
         >
           reTrace
         </span>
+      </div>
+
+      {/* Language switch kept near the top so it's always reachable without
+          scrolling, even on tall pages like Progress. */}
+      <div style={{ padding: "0 16px 28px" }}>
+        <LanguageSwitch />
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 12px", flex: 1 }}>
@@ -157,8 +163,7 @@ function NavRail({
         })}
       </div>
 
-      <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-        <LanguageSwitch />
+      <div style={{ padding: "0 16px" }}>
         <PrivacyChip />
       </div>
     </nav>
