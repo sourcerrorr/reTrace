@@ -18,18 +18,29 @@ import {
 } from "./components/primitives";
 import { SessionScreen } from "./SessionScreen";
 import type { ScoreResult } from "./scoring";
+import { useLanguage } from "./i18n/useLanguage";
+import { LanguageSwitch } from "./i18n/LanguageSwitch";
+import type { Translations } from "./i18n/translations";
 
 /* ─── types ───────────────────────────────────────────────────────────────── */
 type Screen = "setup" | "exercises" | "session" | "results" | "progress";
 type ExerciseType = ExerciseCategory;
 
 /* ─── mock data ──────────────────────────────────────────────────────────── */
-const SESSIONS = [
-  { date: "Mon Jul 7",  label: "Tracing",         dur: "8 min",  acc: 72, smooth: 68 },
-  { date: "Wed Jul 9",  label: "Reach to target",  dur: "6 min",  acc: 78, smooth: 74 },
-  { date: "Thu Jul 10", label: "Tracing",          dur: "9 min",  acc: 75, smooth: 71 },
-  { date: "Mon Jul 14", label: "Reach to target",  dur: "7 min",  acc: 82, smooth: 77 },
-  { date: "Tue Jul 15", label: "Tracing",          dur: "8 min",  acc: 85, smooth: 80 },
+// Placeholder session history. `type` keys the exercise so its name is localized
+// at render; the sample dates stay as-is until real, localized sessions land.
+const SESSIONS: {
+  date: string;
+  type: ExerciseType;
+  dur: string;
+  acc: number;
+  smooth: number;
+}[] = [
+  { date: "Mon Jul 7",  type: "tracing", dur: "8 min", acc: 72, smooth: 68 },
+  { date: "Wed Jul 9",  type: "reach",   dur: "6 min", acc: 78, smooth: 74 },
+  { date: "Thu Jul 10", type: "tracing", dur: "9 min", acc: 75, smooth: 71 },
+  { date: "Mon Jul 14", type: "reach",   dur: "7 min", acc: 82, smooth: 77 },
+  { date: "Tue Jul 15", type: "tracing", dur: "8 min", acc: 85, smooth: 80 },
 ];
 const CHART_DATA = SESSIONS.map((s) => ({
   date: s.date.replace(/^\w+ /, ""),
@@ -64,11 +75,13 @@ const GlobalStyle = () => (
 
 /* ─── nav rail ────────────────────────────────────────────────────────────── */
 
+// `key` is a stable identifier (drives the active-state logic and React keys);
+// the visible label comes from the dictionary via `nav[key]`.
 const NAV = [
-  { id: "setup" as Screen,     label: "Home",      Icon: Home },
-  { id: "exercises" as Screen, label: "Exercises", Icon: Activity },
-  { id: "progress" as Screen,  label: "Progress",  Icon: TrendingUp },
-  { id: "setup" as Screen,     label: "Settings",  Icon: Settings },
+  { key: "home" as const,      screen: "setup" as Screen,     Icon: Home },
+  { key: "exercises" as const, screen: "exercises" as Screen, Icon: Activity },
+  { key: "progress" as const,  screen: "progress" as Screen,  Icon: TrendingUp },
+  { key: "settings" as const,  screen: "setup" as Screen,     Icon: Settings },
 ] as const;
 
 function NavRail({
@@ -78,6 +91,7 @@ function NavRail({
   current: Screen;
   onNavigate: (s: Screen) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <nav
       style={{
@@ -106,12 +120,12 @@ function NavRail({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2, padding: "0 12px", flex: 1 }}>
-        {NAV.map(({ id, label, Icon }) => {
-          const active = current === id && label !== "Settings";
+        {NAV.map(({ key, screen, Icon }) => {
+          const active = current === screen && key !== "settings";
           return (
             <button
-              key={label}
-              onClick={() => onNavigate(id)}
+              key={key}
+              onClick={() => onNavigate(screen)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -133,13 +147,14 @@ function NavRail({
               <span style={{ color: active ? P.sage : P.ink3, display: "flex" }}>
                 <Icon size={20} />
               </span>
-              {label}
+              {t.nav[key]}
             </button>
           );
         })}
       </div>
 
-      <div style={{ padding: "0 16px" }}>
+      <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <LanguageSwitch />
         <PrivacyChip />
       </div>
     </nav>
@@ -228,13 +243,14 @@ function SetupScreen({
 }: {
   onNext: (d: Difficulty) => void;
 }) {
+  const { t } = useLanguage();
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
   const ready = difficulty !== null;
 
   const difficulties: { id: Difficulty; title: string; desc: string }[] = [
-    { id: "easy",   title: "Easy",   desc: "Larger targets, more time." },
-    { id: "medium", title: "Medium", desc: "Balanced practice." },
-    { id: "hard",   title: "Hard",   desc: "Smaller targets, faster pace." },
+    { id: "easy",   title: t.setup.easyTitle,   desc: t.setup.easyDesc },
+    { id: "medium", title: t.setup.mediumTitle, desc: t.setup.mediumDesc },
+    { id: "hard",   title: t.setup.hardTitle,   desc: t.setup.hardDesc },
   ];
 
   return (
@@ -267,7 +283,7 @@ function SetupScreen({
               marginBottom: 24,
             }}
           >
-            How challenging should today feel?
+            {t.setup.question}
           </p>
           <div style={{ display: "flex", gap: 16 }}>
             {difficulties.map(({ id, title, desc }) => {
@@ -347,7 +363,7 @@ function SetupScreen({
               color: P.ink3,
             }}
           >
-            You can change this anytime.
+            {t.setup.changeAnytime}
           </p>
           <PrimaryButton
             onClick={() => ready && onNext(difficulty!)}
@@ -355,7 +371,7 @@ function SetupScreen({
             fullWidth
             height={64}
           >
-            Continue →
+            {t.setup.continue}
           </PrimaryButton>
         </div>
       </div>
@@ -366,6 +382,7 @@ function SetupScreen({
 /* ─── screen 2: exercise select ──────────────────────────────────────────── */
 
 function ExercisesScreen({ onStart }: { onStart: (e: ExerciseType) => void }) {
+  const { t } = useLanguage();
   return (
     <div
       style={{
@@ -386,37 +403,23 @@ function ExercisesScreen({ onStart }: { onStart: (e: ExerciseType) => void }) {
             marginBottom: 32,
           }}
         >
-          Choose today's exercise.
+          {t.exercises.chooseToday}
         </p>
 
         <div style={{ display: "flex", gap: 32, flex: 1 }}>
           <ExerciseCard
-            title="Tracing"
-            description="Follow shapes in the air. Good for smooth, controlled movement."
-            buttonLabel="Start tracing"
+            title={t.exerciseName.tracing}
+            buttonLabel={t.exercises.tracingStart}
             preview={<TracingPreview />}
             onClick={() => onStart("tracing")}
           />
           <ExerciseCard
-            title="Reach to target"
-            description="Touch circles as they appear. Good for range and speed."
-            buttonLabel="Start reaching"
+            title={t.exerciseName.reach}
+            buttonLabel={t.exercises.reachStart}
             preview={<ReachPreview />}
             onClick={() => onStart("reach")}
           />
         </div>
-
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: 16,
-            color: P.ink3,
-            textAlign: "center",
-            marginTop: 24,
-          }}
-        >
-          Recommended: Tracing on Mondays and Thursdays.
-        </p>
       </div>
     </div>
   );
@@ -424,13 +427,11 @@ function ExercisesScreen({ onStart }: { onStart: (e: ExerciseType) => void }) {
 
 function ExerciseCard({
   title,
-  description,
   buttonLabel,
   preview,
   onClick,
 }: {
   title: string;
-  description: string;
   buttonLabel: string;
   preview: React.ReactNode;
   onClick: () => void;
@@ -484,18 +485,8 @@ function ExerciseCard({
         >
           {title}
         </h2>
-        <p
-          style={{
-            fontFamily: "'Inter', sans-serif",
-            fontSize: 18,
-            color: P.ink2,
-            lineHeight: 1.6,
-            margin: 0,
-            flex: 1,
-          }}
-        >
-          {description}
-        </p>
+        {/* Spacer keeps the button anchored to the card's bottom edge. */}
+        <div style={{ flex: 1 }} />
         <PrimaryButton onClick={onClick} fullWidth height={64}>
           {buttonLabel}
         </PrimaryButton>
@@ -547,6 +538,7 @@ function ResultsScreen({
   // Same two-card layout as before — only the data source changed. The real
   // ScoreResult drives both cards; the reach headline keeps its "avg time per
   // target" reading (a stat), while the bar reflects task completion, not speed.
+  const { t } = useLanguage();
   const d = results.details ?? {};
   const isTracing = exercise === "tracing";
 
@@ -565,24 +557,24 @@ function ResultsScreen({
       };
   const secondaryVal = isTracing ? d.smoothness ?? 0 : d.efficiency ?? 0;
 
-  const accLabel = isTracing ? "Accuracy" : "Avg. time per target";
-  const smoothLabel = isTracing ? "Smoothness" : "Path efficiency";
+  const accLabel = isTracing ? t.metrics.accuracy : t.results.avgTimePerTarget;
+  const smoothLabel = isTracing ? t.metrics.smoothness : t.results.pathEfficiency;
 
   const sentence = (val: number, kind: "acc" | "smooth", ex: ExerciseType) => {
     if (kind === "acc" && ex === "tracing") {
-      if (val >= 80) return "Your line stayed close to the shape most of the way. Nice control.";
-      if (val >= 50) return "You followed the shape well. A few small drifts — that's normal.";
-      return "This one was harder today. Your effort still counts.";
+      if (val >= 80) return t.results.accTracingHigh;
+      if (val >= 50) return t.results.accTracingMid;
+      return "";
     }
     if (kind === "acc" && ex === "reach") {
-      if (val >= 80) return "You reached the targets quickly and accurately. Great range.";
-      if (val >= 50) return "Solid reach and timing. Keep building on this.";
-      return "This one was harder today. Your effort still counts.";
+      if (val >= 80) return t.results.accReachHigh;
+      if (val >= 50) return t.results.accReachMid;
+      return "";
     }
     if (kind === "smooth") {
-      if (val >= 80) return "Your movement was steady throughout — excellent control.";
-      if (val >= 50) return "Your movement was steady with a few small wobbles — that's expected.";
-      return "Your movements showed some variation today. This gets easier with practice.";
+      if (val >= 80) return t.results.smoothHigh;
+      if (val >= 50) return t.results.smoothMid;
+      return t.results.smoothLow;
     }
     return "";
   };
@@ -616,7 +608,7 @@ function ResultsScreen({
               marginBottom: 8,
             }}
           >
-            Session complete
+            {t.results.sessionComplete}
           </p>
           <h1
             style={{
@@ -628,7 +620,7 @@ function ResultsScreen({
               margin: 0,
             }}
           >
-            Nicely done, that's another one in the bank.
+            {t.results.headline}
           </h1>
         </div>
 
@@ -650,12 +642,12 @@ function ResultsScreen({
         <div style={{ display: "flex", gap: 16, width: "100%" }}>
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
             <PrimaryButton onClick={onRetry} fullWidth height={72}>
-              Try again
+              {t.common.tryAgain}
             </PrimaryButton>
           </div>
           <div style={{ flex: "1 1 0", minWidth: 0 }}>
             <SecondaryButton onClick={onBack} fullWidth height={72}>
-              Back to exercises
+              {t.results.backToExercises}
             </SecondaryButton>
           </div>
         </div>
@@ -768,19 +760,18 @@ function ScoreCard({
 /* ─── screen 5: progress ─────────────────────────────────────────────────── */
 
 function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<"all" | "tracing" | "reach">("all");
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  const filtered = SESSIONS.filter((s) => {
-    if (filter === "all") return true;
-    if (filter === "tracing") return s.label === "Tracing";
-    return s.label === "Reach to target";
-  });
+  const filtered = SESSIONS.filter(
+    (s) => filter === "all" || s.type === filter
+  );
 
   const filters: { id: "all" | "tracing" | "reach"; label: string }[] = [
-    { id: "all",     label: "All exercises" },
-    { id: "tracing", label: "Tracing" },
-    { id: "reach",   label: "Reach to target" },
+    { id: "all",     label: t.progress.filterAll },
+    { id: "tracing", label: t.exerciseName.tracing },
+    { id: "reach",   label: t.exerciseName.reach },
   ];
 
   return (
@@ -814,17 +805,8 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
               marginBottom: 4,
             }}
           >
-            Progress
+            {t.progress.title}
           </h1>
-          <p
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 14,
-              color: P.ink3,
-            }}
-          >
-            Everything stays on this computer.
-          </p>
         </div>
 
         {/* Filter row */}
@@ -877,12 +859,12 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
                 color: P.ink,
               }}
             >
-              Session scores
+              {t.progress.sessionScores}
             </p>
             <div style={{ display: "flex", gap: 20 }}>
               {[
-                { label: "Accuracy", color: P.sage700 },
-                { label: "Smoothness", color: P.clay },
+                { label: t.metrics.accuracy, color: P.sage700 },
+                { label: t.metrics.smoothness, color: P.clay },
               ].map(({ label, color }) => (
                 <span
                   key={label}
@@ -941,6 +923,7 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
                 key="accuracy-line"
                 type="monotone"
                 dataKey="Accuracy"
+                name={t.metrics.accuracy}
                 stroke={P.sage700}
                 strokeWidth={3}
                 dot={{ fill: P.sage700, strokeWidth: 0, r: 5 }}
@@ -950,6 +933,7 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
                 key="smoothness-line"
                 type="monotone"
                 dataKey="Smoothness"
+                name={t.metrics.smoothness}
                 stroke={P.clay}
                 strokeWidth={3}
                 dot={{ fill: P.clay, strokeWidth: 0, r: 5 }}
@@ -988,6 +972,7 @@ function SessionRow({
   expanded: boolean;
   onClick: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <button
       onClick={onClick}
@@ -1026,7 +1011,7 @@ function SessionRow({
           flex: 1,
         }}
       >
-        {session.label}
+        {t.exerciseName[session.type]}
       </span>
       <span
         style={{
@@ -1050,7 +1035,7 @@ function SessionRow({
             fontSize: 13,
           }}
         >
-          Accuracy {session.acc}%
+          {t.metrics.accuracy} {session.acc}%
         </span>
         <span
           style={{
@@ -1062,7 +1047,7 @@ function SessionRow({
             fontSize: 13,
           }}
         >
-          Smoothness {session.smooth}%
+          {t.metrics.smoothness} {session.smooth}%
         </span>
       </div>
     </button>
@@ -1070,6 +1055,7 @@ function SessionRow({
 }
 
 function EmptyState({ onStart }: { onStart: () => void }) {
+  const { t } = useLanguage();
   return (
     <div
       style={{
@@ -1098,7 +1084,7 @@ function EmptyState({ onStart }: { onStart: () => void }) {
           margin: 0,
         }}
       >
-        No sessions yet.
+        {t.progress.noSessionsTitle}
       </h2>
       <p
         style={{
@@ -1110,10 +1096,10 @@ function EmptyState({ onStart }: { onStart: () => void }) {
           lineHeight: 1.6,
         }}
       >
-        Finish your first exercise to start seeing your progress here.
+        {t.progress.noSessionsBody}
       </p>
       <PrimaryButton onClick={onStart} height={64}>
-        Start an exercise
+        {t.progress.startExercise}
       </PrimaryButton>
     </div>
   );

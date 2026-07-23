@@ -47,6 +47,19 @@ export const REACH_VARIATIONS: readonly ReachVariation[] = [
   "scatter",
 ];
 
+/**
+ * A language-agnostic description of the on-screen cue for an exercise. The
+ * exercise generator stays free of UI copy: it emits this descriptor and the
+ * session screen resolves it to translated text (see i18n/translations.ts).
+ */
+export type InstructionSpec =
+  | { key: "tracing" }
+  | { key: "lateral"; side: "left" | "right" }
+  | { key: "upward" }
+  | { key: "moving" }
+  | { key: "hold"; seconds: number }
+  | { key: "scatter" };
+
 export interface Point {
   x: number;
   y: number;
@@ -60,7 +73,7 @@ export interface Viewport {
 export interface TracingExercise {
   id: string;
   category: "tracing";
-  instruction: string;
+  instruction: InstructionSpec;
   shape: TraceShape;
   /** Radius-ish scale in px. Every shape is laid out relative to this. */
   size: number;
@@ -87,7 +100,7 @@ export interface TargetMotion {
 export interface ReachExercise {
   id: string;
   category: "reach";
-  instruction: string;
+  instruction: InstructionSpec;
   variation: ReachVariation;
   targets: ReachTarget[];
   /** How long the hand must stay on a target before it counts as a hit. */
@@ -159,7 +172,7 @@ function generateTracing(vp: Viewport): TracingExercise {
   return {
     id: nextId("trace"),
     category: "tracing",
-    instruction: "Start at the green dot, then stay on the path.",
+    instruction: { key: "tracing" },
     shape,
     size,
     center: {
@@ -218,7 +231,7 @@ function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
       const hi = side === "left" ? b.minX + band : b.maxX;
       return {
         ...base,
-        instruction: `Reach out to the target on your ${side}, and hold steady.`,
+        instruction: { key: "lateral", side },
         targets: makeTargets(scaledCount(4, 7, t.countScale), () => ({
           x: between(lo, hi),
           y: between(b.minY, b.maxY),
@@ -231,7 +244,7 @@ function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
       const band = (b.maxY - b.minY) * 0.3;
       return {
         ...base,
-        instruction: "Reach up to the target, and hold steady.",
+        instruction: { key: "upward" },
         targets: makeTargets(scaledCount(4, 7, t.countScale), () => ({
           x: between(b.minX, b.maxX),
           y: between(b.minY, b.minY + band),
@@ -275,7 +288,7 @@ function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
         ...base,
         // Tracking is about sustained contact, so it takes longer than a tap.
         dwellMs: Math.round(BASE_TRACK_DWELL_MS * t.dwellScale),
-        instruction: "Keep your fingertip on the moving target as it travels.",
+        instruction: { key: "moving" },
         motion: { path, radius: motionRadius, periodMs },
         targets: [{ id: 0, x: anchor.x, y: anchor.y, radius: movingRadius }],
       };
@@ -287,7 +300,7 @@ function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
         // Hold duration is the stability requirement; dwellMs carries it so the
         // definition stays data-only and App runs the stability loop.
         dwellMs: t.holdMs,
-        instruction: `Hold steady inside the target for ${Math.round(t.holdMs / 1000)} seconds.`,
+        instruction: { key: "hold", seconds: Math.round(t.holdMs / 1000) },
         targets: [
           {
             id: 0,
@@ -303,7 +316,7 @@ function generateReach(vp: Viewport, difficulty: Difficulty): ReachExercise {
       return {
         ...base,
         variation: "scatter",
-        instruction: "Touch the targets as they appear, and hold each briefly.",
+        instruction: { key: "scatter" },
         targets: makeTargets(scaledCount(6, 9, t.countScale), () => ({
           x: between(b.minX, b.maxX),
           y: between(b.minY, b.maxY),

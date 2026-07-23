@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* ─── hand camera ─────────────────────────────────────────────────────────── */
 /**
@@ -12,6 +13,10 @@ import { useEffect, useRef, useState } from "react";
  *
  * The stream is stopped on unmount and on a request that resolves after
  * unmount, so the camera light never stays on behind the user's back.
+ *
+ * It keeps its own palette copy (below) to stay visually droppable, but does
+ * read the language context for its user-facing messages, so drop it under a
+ * <LanguageProvider>.
  */
 
 // Matches the palette in App.tsx; copied rather than imported to keep this
@@ -26,21 +31,24 @@ const C = {
 
 type CameraStatus = "requesting" | "active" | "error";
 
-function describeCameraError(err: unknown): string {
+/** Message keys into `t.camera`; the component resolves them to translated text. */
+type CameraErrorKey = "declined" | "notFound" | "inUse" | "failed" | "noAccess";
+
+function describeCameraError(err: unknown): CameraErrorKey {
   const name = err instanceof DOMException ? err.name : "";
   switch (name) {
     case "NotAllowedError":
     case "PermissionDeniedError":
     case "SecurityError":
-      return "Camera access was declined. Allow the camera in your browser's site settings, then try again.";
+      return "declined";
     case "NotFoundError":
     case "DevicesNotFoundError":
-      return "No camera was found on this device.";
+      return "notFound";
     case "NotReadableError":
     case "TrackStartError":
-      return "The camera seems to be in use by another app. Close it and try again.";
+      return "inUse";
     default:
-      return "The camera couldn't start.";
+      return "failed";
   }
 }
 
@@ -53,10 +61,11 @@ export function HandCamera({
   /** Selfie-style mirroring. Leave on unless you have a rear-facing setup. */
   mirrored?: boolean;
 }) {
+  const { t } = useLanguage();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [status, setStatus] = useState<CameraStatus>("requesting");
-  const [errorMessage, setErrorMessage] = useState("");
+  const [errorKey, setErrorKey] = useState<CameraErrorKey | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   // Kept in a ref so a parent passing an inline callback doesn't restart the
@@ -67,12 +76,12 @@ export function HandCamera({
   useEffect(() => {
     let cancelled = false;
     setStatus("requesting");
-    setErrorMessage("");
+    setErrorKey(null);
 
     (async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
         setStatus("error");
-        setErrorMessage("This browser can't access the camera.");
+        setErrorKey("noAccess");
         return;
       }
       try {
@@ -96,7 +105,7 @@ export function HandCamera({
         // play() aborts when the element is torn down mid-start; that's not an error.
         if (cancelled || (err instanceof DOMException && err.name === "AbortError" && streamRef.current)) return;
         setStatus("error");
-        setErrorMessage(describeCameraError(err));
+        setErrorKey(describeCameraError(err));
       }
     })();
 
@@ -160,7 +169,7 @@ export function HandCamera({
                 margin: 0,
               }}
             >
-              Starting camera…
+              {t.camera.starting}
             </p>
           ) : (
             <>
@@ -174,7 +183,7 @@ export function HandCamera({
                   maxWidth: 360,
                 }}
               >
-                {errorMessage}
+                {errorKey ? t.camera[errorKey] : t.camera.failed}
               </p>
               <button
                 onClick={() => setAttempt((a) => a + 1)}
@@ -191,7 +200,7 @@ export function HandCamera({
                   cursor: "pointer",
                 }}
               >
-                Try again
+                {t.common.tryAgain}
               </button>
             </>
           )}

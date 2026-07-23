@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { P } from "../theme";
+import { useLanguage } from "../i18n/useLanguage";
 
 /* ─── shared primitives ──────────────────────────────────────────────────── */
 /**
@@ -9,6 +10,7 @@ import { P } from "../theme";
  */
 
 export function PrivacyChip({ dark = false }: { dark?: boolean }) {
+  const { t } = useLanguage();
   return (
     <div
       style={{
@@ -37,7 +39,7 @@ export function PrivacyChip({ dark = false }: { dark?: boolean }) {
           display: "inline-block",
         }}
       />
-      Recording locally · nothing uploaded
+      {t.common.recordingLocally}
     </div>
   );
 }
