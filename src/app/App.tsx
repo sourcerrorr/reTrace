@@ -1383,7 +1383,7 @@ export default function App() {
           )}
         </main>
 
-        <DevNav onNavigate={setScreen} />
+        {import.meta.env.DEV && <DevNav onNavigate={setScreen} />}
       </div>
     </>
   );
