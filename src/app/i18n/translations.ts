@@ -64,6 +64,13 @@ export const en = {
     startSession: "Start session →",
   },
 
+  /** Input-method picker on the setup screen: how the user drives the session. */
+  inputMethod: {
+    question: "How would you like to do the exercise?",
+    hand: "Hand (webcam required)",
+    mouse: "Mouse",
+  },
+
   results: {
     sessionComplete: "Session complete",
     headline: "Nicely done, that's another one in the bank.",
@@ -199,6 +206,12 @@ export const ka: Translations = {
     startSession: "სესიის დაწყება →",
   },
 
+  inputMethod: {
+    question: "აირჩიეთ, როგორ გსურთ ვარჯიშის შესრულება",
+    hand: "ხელით (საჭიროა ვებკამერა)",
+    mouse: "მაუსით",
+  },
+
   results: {
     sessionComplete: "სესია დასრულდა",
     headline: "ვარჯიში შესრულებულია",
@@ -247,12 +260,12 @@ export const ka: Translations = {
 
   instructions: {
     tracing: "დაიწყეთ მწვანე წერტილიდან და დარჩით ხაზზე.",
-    lateralLeft: "მიწვდით მარცხნივ მდებარე სამიზნეს და დარჩით მდგრადად.",
-    lateralRight: "მიწვდით მარჯვნივ მდებარე სამიზნეს და დარჩით მდგრადად.",
-    upward: "მიწვდით ზემოთ მდებარე სამიზნეს და დარჩით მდგრადად.",
-    moving: "შეინარჩუნეთ თითის წვერი მოძრავ სამიზნეზე მისი გადაადგილებისას.",
-    hold: (seconds: number) => `მდგრადად შეიკავეთ სამიზნის შიგნით ${seconds} წამის განმავლობაში.`,
-    scatter: "შეეხეთ სამიზნეებს გამოჩენისთანავე და მოკლედ შეიკავეთ თითოეული.",
+    lateralLeft: "მიუთითეთ სამიზნეზე",
+    lateralRight: "მიუთითეთ სამიზნეზე",
+    upward: "მიუთითეთ ეკრანზე გამოჩენილ სამიზნეებზე",
+    moving: "შეინარჩუნეთ თითის წვერი მოძრავ სამიზნეზე",
+    hold: (seconds: number) => `მიუთითეთ ეკრანზე გამოჩენილ სამიზნეზე ${seconds} წამით`,
+    scatter: "მიუთითეთ სამიზნეებზე",
   },
 
   camera: {

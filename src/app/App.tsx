@@ -22,6 +22,7 @@ import {
   SecondaryButton,
   PrivacyChip,
 } from "./components/primitives";
+import type { InputMode } from "./runtime/config";
 import { SessionScreen } from "./SessionScreen";
 import type { ScoreResult } from "./scoring";
 import { useLanguage } from "./i18n/useLanguage";
@@ -255,12 +256,17 @@ function DevNav({ onNavigate }: { onNavigate: (s: Screen) => void }) {
 function ExercisesScreen({
   onStart,
 }: {
-  onStart: (category: ExerciseType, difficulty: Difficulty) => void;
+  onStart: (
+    category: ExerciseType,
+    difficulty: Difficulty,
+    input: InputMode
+  ) => void;
 }) {
   const { t } = useLanguage();
   const [type, setType] = useState<ExerciseType | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
-  const ready = type !== null && difficulty !== null;
+  const [input, setInput] = useState<InputMode | null>(null);
+  const ready = type !== null && difficulty !== null && input !== null;
 
   const difficulties: { id: Difficulty; title: string; desc: string }[] = [
     { id: "easy",   title: t.setup.easyTitle,   desc: t.setup.easyDesc },
@@ -397,6 +403,72 @@ function ExercisesScreen({
           </div>
         </div>
 
+        {/* Input method — a required, explicit choice (like exercise type) that
+            decides which input source drives the session. */}
+        <div
+          style={{
+            background: P.paper,
+            border: `1px solid ${P.border}`,
+            borderRadius: 20,
+            padding: 32,
+          }}
+        >
+          <p
+            style={{
+              fontFamily: "'Inter', sans-serif",
+              fontSize: 22,
+              fontWeight: 600,
+              color: P.ink,
+              marginBottom: 24,
+            }}
+          >
+            {t.inputMethod.question}
+          </p>
+          <div
+            style={{
+              display: "inline-flex",
+              gap: 6,
+              padding: 6,
+              borderRadius: 9999,
+              background: P.bone,
+              border: `1px solid ${P.border}`,
+            }}
+          >
+            {([
+              { id: "hand" as const, label: t.inputMethod.hand },
+              { id: "mouse" as const, label: t.inputMethod.mouse },
+            ]).map(({ id, label }) => {
+              const sel = input === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setInput(id)}
+                  aria-pressed={sel}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    height: 52,
+                    padding: "0 28px",
+                    borderRadius: 9999,
+                    background: sel ? P.sage : "transparent",
+                    border: "none",
+                    color: sel ? "#fff" : P.ink2,
+                    fontFamily: "'Inter', sans-serif",
+                    fontSize: 17,
+                    fontWeight: sel ? 600 : 400,
+                    cursor: "pointer",
+                    transition: "background 160ms ease-out, color 160ms ease-out",
+                  }}
+                >
+                  {sel && <Check size={16} strokeWidth={3} />}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Start */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <p
@@ -410,7 +482,7 @@ function ExercisesScreen({
             {t.exercises.sessionLength(SESSION_LENGTH)}
           </p>
           <PrimaryButton
-            onClick={() => ready && onStart(type!, difficulty!)}
+            onClick={() => ready && onStart(type!, difficulty!, input!)}
             disabled={!ready}
             fullWidth
             height={64}
@@ -1207,6 +1279,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("exercises");
   const [category, setCategory] = useState<ExerciseType | null>(null);
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
+  // The user picks this on the setup screen (required); it's always set before a
+  // session starts. Defaulted so the SessionScreen prop is never null.
+  const [inputMode, setInputMode] = useState<InputMode>("hand");
 
   // A session is a plan of several same-type exercises. We walk `plan` by
   // `index`, collecting one ScoreResult each, and only show Results at the end.
@@ -1217,9 +1292,14 @@ export default function App() {
   // same type/index, forcing a fresh remount of the runtime hooks.
   const [runId, setRunId] = useState(0);
 
-  const startSession = (cat: ExerciseType, diff: Difficulty) => {
+  const startSession = (
+    cat: ExerciseType,
+    diff: Difficulty,
+    input: InputMode
+  ) => {
     setCategory(cat);
     setDifficulty(diff);
+    setInputMode(input);
     setPlan(
       generateSessionPlan(
         cat,
@@ -1245,7 +1325,7 @@ export default function App() {
   };
 
   const handleRetry = () => {
-    if (category) startSession(category, difficulty);
+    if (category) startSession(category, difficulty, inputMode);
   };
 
   const isSession = screen === "session";
@@ -1273,6 +1353,7 @@ export default function App() {
             <SessionScreen
               key={`${runId}-${index}`}
               plan={plan[index]}
+              inputMode={inputMode}
               exerciseIndex={index}
               exerciseTotal={plan.length}
               isLastExercise={index === plan.length - 1}

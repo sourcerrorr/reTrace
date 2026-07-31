@@ -12,7 +12,7 @@ import { P } from "./theme";
 import { useLanguage } from "./i18n/useLanguage";
 import { LanguageSwitch } from "./i18n/LanguageSwitch";
 import type { Translations } from "./i18n/translations";
-import { USE_HAND_TRACKING } from "./runtime/config";
+import type { InputMode } from "./runtime/config";
 import type { SessionPhase } from "./runtime/types";
 import { useTracingRuntime } from "./hooks/useTracingRuntime";
 import { useReachRuntime } from "./hooks/useReachRuntime";
@@ -243,6 +243,7 @@ function ExitDialog({
 
 export function SessionScreen({
   plan,
+  inputMode,
   exerciseIndex,
   exerciseTotal,
   isLastExercise,
@@ -251,6 +252,8 @@ export function SessionScreen({
 }: {
   /** The concrete exercise for this step of the session, rolled by App. */
   plan: Exercise;
+  /** How the user chose to drive this session: hand tracking or mouse. */
+  inputMode: InputMode;
   /** 0-based position of this exercise within the session. */
   exerciseIndex: number;
   /** Total exercises in the session (for the "Exercise 2 / 5" indicator). */
@@ -263,6 +266,10 @@ export function SessionScreen({
   onExit: (r: ScoreResult) => void;
 }) {
   const { t } = useLanguage();
+
+  // Which input source drives this session. Decides whether we render the webcam
+  // + fingertip cursor, and which source the runtime hooks create.
+  const useHandTracking = inputMode === "hand";
 
   // Session start, for the scored duration. Read once, on mount (the session
   // mounts straight into its active phase), so it doesn't affect any timing.
@@ -292,11 +299,19 @@ export function SessionScreen({
   const completeReaching = useCallback(() => setPhase("reaching-complete"), []);
 
   // ─── runtime hooks: each owns one system; this component just wires them ───
-  const tracing = useTracingRuntime({ plan, phase, video, canvasRef, cursorRef });
+  const tracing = useTracingRuntime({
+    plan,
+    phase,
+    useHandTracking,
+    video,
+    canvasRef,
+    cursorRef,
+  });
   const reachRt = useReachRuntime({
     reach,
     phase,
     isHold,
+    useHandTracking,
     video,
     cursorRef,
     lastPointRef,
@@ -361,7 +376,7 @@ export function SessionScreen({
     >
       {/* Webcam layer — the real mirrored camera when hand tracking drives
           input, the dark green placeholder otherwise */}
-      {USE_HAND_TRACKING ? (
+      {useHandTracking ? (
         // -2px pushes HandCamera's 1px card border just offscreen; its rounded
         // corners blend into the identical ink background.
         <div style={{ position: "absolute", inset: -2 }}>
@@ -413,7 +428,7 @@ export function SessionScreen({
 
       {/* Fingertip cursor — follows the hand every frame; fills while drawing.
           Positioned imperatively via cursorRef (see moveCursor). */}
-      {USE_HAND_TRACKING && (phase === "tracing" || phase === "reaching") && (
+      {useHandTracking && (phase === "tracing" || phase === "reaching") && (
         <div
           ref={cursorRef}
           style={{

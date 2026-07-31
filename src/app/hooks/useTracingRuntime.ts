@@ -37,7 +37,6 @@ import {
   type Point,
   type TracingExercise,
 } from "../exercises";
-import { USE_HAND_TRACKING } from "../runtime/config";
 import { idleCursor, moveCursor } from "../runtime/cursor";
 import type { SessionPhase } from "../runtime/types";
 import type { TracingMetrics } from "../scoring/types";
@@ -116,11 +115,13 @@ function isOnGuidePath(p: HandPoint, guide: Point[]): boolean {
 export function useTracingRuntime(opts: {
   plan: Exercise;
   phase: SessionPhase;
+  /** Hand tracking (webcam) vs. mouse — chosen by the user, passed from App. */
+  useHandTracking: boolean;
   video: HTMLVideoElement | null;
   canvasRef: RefObject<HTMLCanvasElement | null>;
   cursorRef: RefObject<HTMLDivElement | null>;
 }): TracingRuntime {
-  const { plan, phase, video, canvasRef, cursorRef } = opts;
+  const { plan, phase, useHandTracking, video, canvasRef, cursorRef } = opts;
 
   const [modeIndicator, setModeIndicator] = useState<ModeIndicator>("Paused");
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -159,12 +160,12 @@ export function useTracingRuntime(opts: {
     if (phase !== "tracing") return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (USE_HAND_TRACKING && !video) return; // camera not up yet
+    if (useHandTracking && !video) return; // camera not up yet
     if (plan.category !== "tracing") return;
 
     const guide = shapePoints(plan);
 
-    const source = USE_HAND_TRACKING
+    const source = useHandTracking
       ? createHandTrackingInputSource(video!)
       : createMouseInputSource({ engageElement: canvas });
     source.start({
@@ -239,7 +240,7 @@ export function useTracingRuntime(opts: {
       },
     });
     return () => source.stop();
-  }, [phase, plan, video, canvasRef, cursorRef]);
+  }, [phase, plan, useHandTracking, video, canvasRef, cursorRef]);
 
   // Reset the current tracing attempt — wipe the stroke, redraw the guide,
   // keep the same generated exercise.

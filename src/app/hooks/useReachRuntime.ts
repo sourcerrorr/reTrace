@@ -18,7 +18,6 @@ import {
   type HandPoint,
 } from "../input";
 import { isPointOnTarget, type ReachExercise } from "../exercises";
-import { USE_HAND_TRACKING } from "../runtime/config";
 import { moveCursor } from "../runtime/cursor";
 import type { SessionPhase } from "../runtime/types";
 import type { ReachMetrics } from "../scoring/types";
@@ -47,6 +46,8 @@ export function useReachRuntime(opts: {
   reach: ReachExercise | null;
   phase: SessionPhase;
   isHold: boolean;
+  /** Hand tracking (webcam) vs. mouse — chosen by the user, passed from App. */
+  useHandTracking: boolean;
   video: HTMLVideoElement | null;
   cursorRef: RefObject<HTMLDivElement | null>;
   /** Shared with the hold runtime: latest fingertip position, updated per frame. */
@@ -54,8 +55,16 @@ export function useReachRuntime(opts: {
   /** Fired when the final target has been cleared. */
   onComplete: () => void;
 }): ReachRuntime {
-  const { reach, phase, isHold, video, cursorRef, lastPointRef, onComplete } =
-    opts;
+  const {
+    reach,
+    phase,
+    isHold,
+    useHandTracking,
+    video,
+    cursorRef,
+    lastPointRef,
+    onComplete,
+  } = opts;
 
   const totalTargets = reach ? reach.targets.length : 0;
 
@@ -145,7 +154,7 @@ export function useReachRuntime(opts: {
 
   useEffect(() => {
     if (phase !== "reaching") return;
-    if (USE_HAND_TRACKING && !video) return; // camera not up yet
+    if (useHandTracking && !video) return; // camera not up yet
     // Fresh tallies for this reaching run.
     metrics.current = {
       targetsTotal: totalTargets,
@@ -156,7 +165,7 @@ export function useReachRuntime(opts: {
     };
     activePath.current = [];
     lastFrameTs.current = performance.now();
-    const source = USE_HAND_TRACKING
+    const source = useHandTracking
       ? createHandTrackingInputSource(video!)
       : createMouseInputSource();
     source.start({
@@ -171,7 +180,16 @@ export function useReachRuntime(opts: {
       source.stop();
       if (approachTimer.current) clearTimeout(approachTimer.current);
     };
-  }, [phase, onHandPoint, video, isHold, cursorRef, lastPointRef, totalTargets]);
+  }, [
+    phase,
+    onHandPoint,
+    useHandTracking,
+    video,
+    isHold,
+    cursorRef,
+    lastPointRef,
+    totalTargets,
+  ]);
 
   return { hitsCount, approaching, hitFlash, displayTargetIdx, metrics };
 }
