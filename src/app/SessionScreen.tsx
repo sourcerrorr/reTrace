@@ -611,7 +611,10 @@ export function SessionScreen({
             gap: 16,
           }}
         >
-          <CuePill text={t.session.tracingHint} />
+          {/* The follow-up hint is about pinching to resume a stroke — a
+              hand-tracking gesture. Mouse users don't pinch, so skip it and let
+              the primary "start at the dot" cue stand on its own. */}
+          {useHandTracking && <CuePill text={t.session.tracingHint} />}
           <div style={{ display: "flex", gap: 12 }}>
             <SecondaryButton onClick={tracing.clearDrawing} height={64}>
               {t.session.clearDrawing}
