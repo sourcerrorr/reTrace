@@ -25,6 +25,12 @@ import {
 import type { InputMode } from "./runtime/config";
 import { SessionScreen } from "./SessionScreen";
 import type { ScoreResult } from "./scoring";
+import {
+  loadSessions,
+  aggregateSession,
+  appendSession,
+  type SessionHistoryEntry,
+} from "./history";
 import { useLanguage } from "./i18n/useLanguage";
 import { LanguageSwitch } from "./i18n/LanguageSwitch";
 import type { Translations } from "./i18n/translations";
@@ -33,27 +39,13 @@ import type { Translations } from "./i18n/translations";
 type Screen = "exercises" | "session" | "results" | "progress";
 type ExerciseType = ExerciseCategory;
 
-/* ─── mock data ──────────────────────────────────────────────────────────── */
-// Placeholder session history. `type` keys the exercise so its name is localized
-// at render; the sample dates stay as-is until real, localized sessions land.
-const SESSIONS: {
-  date: string;
-  type: ExerciseType;
-  dur: string;
-  acc: number;
-  smooth: number;
-}[] = [
-  { date: "Mon Jul 7",  type: "tracing", dur: "8 min", acc: 72, smooth: 68 },
-  { date: "Wed Jul 9",  type: "reach",   dur: "6 min", acc: 78, smooth: 74 },
-  { date: "Thu Jul 10", type: "tracing", dur: "9 min", acc: 75, smooth: 71 },
-  { date: "Mon Jul 14", type: "reach",   dur: "7 min", acc: 82, smooth: 77 },
-  { date: "Tue Jul 15", type: "tracing", dur: "8 min", acc: 85, smooth: 80 },
-];
-const CHART_DATA = SESSIONS.map((s) => ({
-  date: s.date.replace(/^\w+ /, ""),
-  Accuracy: s.acc,
-  Smoothness: s.smooth,
-}));
+/* ─── session duration formatting ────────────────────────────────────────── */
+// Sub-minute sessions (common while testing) read better in seconds than as
+// "0 min", so fall back to seconds below one minute.
+const formatDuration = (ms: number): string => {
+  const min = Math.round(ms / 60000);
+  return min >= 1 ? `${min} min` : `${Math.round(ms / 1000)} s`;
+};
 
 /* ─── global animation styles ─────────────────────────────────────────────── */
 const GlobalStyle = () => (
@@ -931,10 +923,18 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
   const { t } = useLanguage();
   const [filter, setFilter] = useState<"all" | "tracing" | "reach">("all");
   const [expanded, setExpanded] = useState<number | null>(null);
+  // Read once per mount. The screen unmounts on navigation, so returning here
+  // after finishing a session re-reads the freshly appended history.
+  const [sessions] = useState(loadSessions);
 
-  const filtered = SESSIONS.filter(
+  const filtered = sessions.filter(
     (s) => filter === "all" || s.type === filter
   );
+  const chartData = filtered.map((s) => ({
+    date: s.date.replace(/^\w+ /, ""),
+    Accuracy: Math.round(s.accuracy),
+    Smoothness: Math.round(s.quality),
+  }));
 
   const filters: { id: "all" | "tracing" | "reach"; label: string }[] = [
     { id: "all",     label: t.progress.filterAll },
@@ -1002,7 +1002,8 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
           ))}
         </div>
 
-        {/* Chart */}
+        {/* Chart — hidden until there's at least one session to plot. */}
+        {filtered.length > 0 && (
         <div
           style={{
             background: P.paper,
@@ -1060,7 +1061,7 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
             </div>
           </div>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={CHART_DATA} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+            <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
               <CartesianGrid key="grid" vertical={false} stroke={P.border} strokeDasharray="0" />
               <XAxis
                 key="xaxis"
@@ -1110,6 +1111,7 @@ function ProgressScreen({ onStartExercise }: { onStartExercise: () => void }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+        )}
 
         {/* Session list */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1136,7 +1138,7 @@ function SessionRow({
   expanded,
   onClick,
 }: {
-  session: (typeof SESSIONS)[0];
+  session: SessionHistoryEntry;
   expanded: boolean;
   onClick: () => void;
 }) {
@@ -1190,7 +1192,7 @@ function SessionRow({
           flexShrink: 0,
         }}
       >
-        {session.dur}
+        {formatDuration(session.durationMs)}
       </span>
       <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
         <span
@@ -1203,7 +1205,7 @@ function SessionRow({
             fontSize: 13,
           }}
         >
-          {t.metrics.accuracy} {session.acc}%
+          {t.metrics.accuracy} {Math.round(session.accuracy)}%
         </span>
         <span
           style={{
@@ -1215,7 +1217,7 @@ function SessionRow({
             fontSize: 13,
           }}
         >
-          {t.metrics.smoothness} {session.smooth}%
+          {t.metrics.smoothness} {Math.round(session.quality)}%
         </span>
       </div>
     </button>
@@ -1315,11 +1317,18 @@ export default function App() {
 
   // Record this exercise's result, then either advance to the next exercise or,
   // if it was the last (or the user ended the session early), show Results.
+  // Only a naturally completed full plan (not an early exit) is persisted to
+  // history — setResults is async, so aggregate from the full list explicitly.
   const finishExercise = (r: ScoreResult, endSession: boolean) => {
-    setResults((prev) => [...prev, r]);
+    const all = [...results, r];
+    setResults(all);
     if (!endSession && index + 1 < plan.length) {
       setIndex((i) => i + 1);
     } else {
+      const completedFullPlan = !endSession;
+      if (completedFullPlan && category) {
+        appendSession(aggregateSession(all, category));
+      }
       setScreen("results");
     }
   };
@@ -1374,7 +1383,7 @@ export default function App() {
           )}
         </main>
 
-        <DevNav onNavigate={setScreen} />
+        {import.meta.env.DEV && <DevNav onNavigate={setScreen} />}
       </div>
     </>
   );
