@@ -1,5 +1,7 @@
 # reTrace
 
+**Live demo:** [retrace-btu.vercel.app](https://retrace-btu.vercel.app/)
+
 reTrace is a browser-based hand rehabilitation and motor-practice tool. It uses
 your webcam to track your index fingertip in real time and turns simple
 tracing and reaching exercises into a guided practice session, with scores and
